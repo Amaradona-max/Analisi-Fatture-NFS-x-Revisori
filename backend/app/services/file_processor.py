@@ -13,7 +13,27 @@ logger = logging.getLogger(__name__)
 
 class NFSFTFileProcessor:
     PROTOCOLLI_FASE2 = ["P", "2P", "LABI", "FCBI", "FCSI", "FCBE", "FCSE"]
-    PROTOCOLLI_FASE3 = ["EP", "2EP", "EL", "2EL", "EZ", "2EZ", "EZP", "FPIC", "FSIC", "FPEC", "FSEC"]
+    PROTOCOLLI_FASE3 = [
+        "EP",
+        "2EP",
+        "EL",
+        "2EL",
+        "EZ",
+        "2EZ",
+        "EZP",
+        "FPIC",
+        "FSIC",
+        "FPEC",
+        "FSEC",
+        "AFIC",
+        "ASIC",
+        "AFEC",
+        "ASEC",
+        "ACBI",
+        "ACSI",
+        "ACBE",
+        "ACSE",
+    ]
 
     DESCRIZIONI_FASE2 = {
         "P": "Fatture Cartacee San",
@@ -37,6 +57,14 @@ class NFSFTFileProcessor:
         "FSIC": "Fatture Elettroniche Estere San",
         "FPEC": "Fatture Elettroniche Estere San",
         "FSEC": "Fatture Elettroniche Estere San",
+        "AFIC": "Fatture Elettroniche Estere San",
+        "ASIC": "Fatture Elettroniche Estere San",
+        "AFEC": "Fatture Elettroniche Estere San",
+        "ASEC": "Fatture Elettroniche Estere San",
+        "ACBI": "Fatture Elettroniche Estere San",
+        "ACSI": "Fatture Elettroniche Estere San",
+        "ACBE": "Fatture Elettroniche Estere San",
+        "ACSE": "Fatture Elettroniche Estere San",
     }
 
     REQUIRED_COLUMNS = [
@@ -47,11 +75,12 @@ class NFSFTFileProcessor:
         "FAT_PROT",
         "FAT_NUM",
         "IMPONIBILE",
-        "FAT_TOTIVA",
-        "PA_IMPORTO",
-        "DMA_NUM",
-        "TMA_DTGEN",
         "FAT_TOTFAT",
+        "FAT_TOTIVA",
+        "DMA_NUM",
+        "RA_CODTRIB",
+        "RA_IMPOSTA",
+        "TMA_TOT",
         "TMC_G8",
     ]
 
@@ -71,12 +100,21 @@ class NFSFTFileProcessor:
             self.validate_file(df)
 
             df["FAT_PROT"] = df["FAT_PROT"].astype(str).str.strip()
-            df_filtrato = df[df["FAT_PROT"].isin(self.all_protocols)].copy()
+            totale_iniziale = len(df)
+            df_senza_duplicati = df.drop_duplicates(subset=["FAT_NUM", "C_NOME"]).copy()
+            duplicati_rimossi = totale_iniziale - len(df_senza_duplicati)
+            df_filtrato = df_senza_duplicati[df_senza_duplicati["FAT_PROT"].isin(self.all_protocols)].copy()
 
             if len(df_filtrato) == 0:
                 raise ValueError("Nessun protocollo valido trovato nel file")
 
-            df_filtrato["Tot. Importo Mandato"] = df_filtrato["IMPONIBILE"]
+            df_filtrato["RA_CODTRIB"] = (
+                df_filtrato["RA_CODTRIB"]
+                .astype(str)
+                .str.strip()
+                .where(lambda value: value.isin(["I9", "RO"]), "")
+            )
+            df_filtrato["Tot. Importo Mandato"] = df_filtrato["TMA_TOT"]
 
             colonne_ordinate = [
                 "C_NOME",
@@ -86,34 +124,37 @@ class NFSFTFileProcessor:
                 "FAT_PROT",
                 "FAT_NUM",
                 "IMPONIBILE",
+                "FAT_TOTFAT",
                 "FAT_TOTIVA",
-                "PA_IMPORTO",
+                "RA_CODTRIB",
                 "DMA_NUM",
-                "TMA_DTGEN",
                 "Tot. Importo Mandato",
                 "TMC_G8",
             ]
 
             df_finale = df_filtrato[colonne_ordinate].copy()
             df_finale.columns = [
-                "Ragione sociale",
+                "Ragione Sociale",
                 "Data Fatture",
-                "N. fatture",
+                "N. Fatture",
                 "Data Ricevimento",
                 "Protocollo",
                 "N. Protocollo",
-                "Tot. imponibile",
+                "Tot. Imponibile",
+                "Importo Tot. Fatture",
                 "Imposta",
-                "Tot. Fatture",
+                "Ritenuta D'acconto",
                 "N. Mandato",
-                "Data Mandato",
                 "Tot. Importo Mandato",
                 "Id. SDI",
             ]
 
+            df_finale["Data Fatture"] = pd.to_datetime(df_finale["Data Fatture"], errors="coerce")
+            df_finale["Data Ricevimento"] = pd.to_datetime(df_finale["Data Ricevimento"], errors="coerce")
+
             df_finale = df_finale.sort_values("Data Ricevimento")
 
-            stats = self._calculate_stats(df_finale)
+            stats = self._calculate_stats(df_finale, duplicati_rimossi)
             self._create_excel_output(df_finale, output_path)
 
             logger.info("File elaborato con successo: %s", stats)
@@ -122,7 +163,7 @@ class NFSFTFileProcessor:
             logger.error("Errore elaborazione file: %s", str(exc))
             raise
 
-    def _calculate_stats(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _calculate_stats(self, df: pd.DataFrame, duplicates_removed: int) -> Dict[str, Any]:
         fase2_count = df[df["Protocollo"].isin(self.PROTOCOLLI_FASE2)].shape[0]
         fase3_count = df[df["Protocollo"].isin(self.PROTOCOLLI_FASE3)].shape[0]
 
@@ -130,7 +171,7 @@ class NFSFTFileProcessor:
             "total_records": len(df),
             "fase2_records": fase2_count,
             "fase3_records": fase3_count,
-            "duplicates_removed": 0,
+            "duplicates_removed": duplicates_removed,
             "protocols_fase2": self._count_by_protocol(df, self.PROTOCOLLI_FASE2),
             "protocols_fase3": self._count_by_protocol(df, self.PROTOCOLLI_FASE3),
         }
@@ -146,27 +187,23 @@ class NFSFTFileProcessor:
 
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         header_font = Font(bold=True, color="FFFFFF")
+        total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        total_font = Font(bold=True)
 
-        ws_dati = wb.active
-        ws_dati.title = "Dati"
+        ws_dati = self._add_dataframe_sheet(
+            wb,
+            "Dati",
+            df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+            date_columns=["Data Fatture", "Data Ricevimento"],
+            money_columns=["Tot. Imponibile", "Importo Tot. Fatture", "Imposta", "Tot. Importo Mandato"],
+            use_active=True,
+        )
 
-        for r in dataframe_to_rows(df, index=False, header=True):
-            ws_dati.append(r)
-
-        for cell in ws_dati[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-
-        for column in ws_dati.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                if cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            ws_dati.column_dimensions[column_letter].width = min(max_length + 2, 50)
-
-        ws_nota2 = wb.create_sheet("Nota Riepilogativa 2")
+        ws_nota2 = wb.create_sheet("Fatture Cartacee")
         self._create_summary_sheet(
             ws_nota2,
             df,
@@ -174,9 +211,11 @@ class NFSFTFileProcessor:
             self.DESCRIZIONI_FASE2,
             header_fill,
             header_font,
+                total_fill,
+                total_font,
         )
 
-        ws_nota3 = wb.create_sheet("Nota Riepilogativa 3")
+        ws_nota3 = wb.create_sheet("Fatture Elettroniche")
         self._create_summary_sheet(
             ws_nota3,
             df,
@@ -184,33 +223,121 @@ class NFSFTFileProcessor:
             self.DESCRIZIONI_FASE3,
             header_fill,
             header_font,
+                total_fill,
+                total_font,
         )
 
         wb.save(output_path)
 
-    def _create_summary_sheet(self, ws, df, protocols, descriptions, header_fill, header_font):
-        ws["A1"] = "PROTOCOLLO"
-        ws["B1"] = "DESCRIZIONE"
-        ws["C1"] = "NUMERO TOTALE"
+    def _add_dataframe_sheet(
+        self,
+        wb: Workbook,
+        title: str,
+        df: pd.DataFrame,
+        header_fill: PatternFill,
+        header_font: Font,
+        total_fill: PatternFill,
+        total_font: Font,
+        date_columns=None,
+        money_columns=None,
+        use_active: bool = False,
+    ):
+        ws = wb.active if use_active else wb.create_sheet(title)
+        ws.title = title
+
+        for r in dataframe_to_rows(df, index=False, header=True):
+            ws.append(r)
 
         for cell in ws[1]:
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+
+        date_columns = date_columns or []
+        money_columns = money_columns or []
+        header_index = {cell.value: cell.column for cell in ws[1]}
+        date_format = "mm/dd/yyyy"
+        money_format = "#,##0.00"
+
+        for column_name in date_columns:
+            column_index = header_index.get(column_name)
+            if column_index:
+                for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=column_index, max_col=column_index):
+                    for cell in row:
+                        if cell.value is not None:
+                            cell.number_format = date_format
+
+        for column_name in money_columns:
+            column_index = header_index.get(column_name)
+            if column_index:
+                for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=column_index, max_col=column_index):
+                    for cell in row:
+                        if cell.value is not None:
+                            cell.number_format = money_format
+
+        if money_columns:
+            totals = {}
+            for column_name in money_columns:
+                totals[column_name] = pd.to_numeric(df[column_name], errors="coerce").sum()
+            total_row = ["TOTALE"] + [""] * (len(df.columns) - 1)
+            for column_name, total_value in totals.items():
+                total_row[df.columns.get_loc(column_name)] = total_value
+            ws.append(total_row)
+            total_row_index = ws.max_row
+            for cell in ws[total_row_index]:
+                cell.fill = total_fill
+                cell.font = total_font
+            for column_name in money_columns:
+                column_index = header_index.get(column_name)
+                if column_index:
+                    ws.cell(row=total_row_index, column=column_index).number_format = money_format
+
+        return ws
+
+    def _create_summary_sheet(self, ws, df, protocols, descriptions, header_fill, header_font, total_fill, total_font):
+        ws["A1"] = "PROTOCOLLO"
+        ws["B1"] = "DESCRIZIONE"
+        ws["C1"] = "NUMERO TOTALE"
+        ws["D1"] = "IMPORTO TOTALE"
+
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        money_format = "#,##0.00"
         row = 2
         for prot in protocols:
             count = len(df[df["Protocollo"] == prot])
+            importo_totale = pd.to_numeric(
+                df.loc[df["Protocollo"] == prot, "Importo Tot. Fatture"], errors="coerce"
+            ).sum()
             ws[f"A{row}"] = prot
             ws[f"B{row}"] = descriptions[prot]
             ws[f"C{row}"] = count
+            ws[f"D{row}"] = importo_totale
+            ws[f"D{row}"].number_format = money_format
             row += 1
 
         ws[f"A{row}"] = "TOTALE"
-        ws[f"A{row}"].font = Font(bold=True)
+        ws[f"A{row}"].font = total_font
         ws[f"C{row}"] = f"=SUM(C2:C{row - 1})"
-        ws[f"C{row}"].font = Font(bold=True)
+        ws[f"C{row}"].font = total_font
+        ws[f"D{row}"] = f"=SUM(D2:D{row - 1})"
+        ws[f"D{row}"].number_format = money_format
+        for cell in ws[row]:
+            cell.fill = total_fill
+            cell.font = total_font
 
         ws.column_dimensions["A"].width = 15
         ws.column_dimensions["B"].width = 40
         ws.column_dimensions["C"].width = 20
+        ws.column_dimensions["D"].width = 20
