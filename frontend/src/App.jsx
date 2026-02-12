@@ -77,7 +77,7 @@ function App() {
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <FileSpreadsheet className="w-12 h-12 text-blue-600" />
-            <h1 className="text-4xl font-bold text-gray-800">Gestione File NFS/FT</h1>
+            <h1 className="text-4xl font-bold text-gray-800">1. Query Fatture NFS</h1>
           </div>
           <p className="text-gray-600">
             Elaborazione automatica file Excel con filtraggio protocolli e note riepilogative
