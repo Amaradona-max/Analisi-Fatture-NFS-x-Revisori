@@ -30,6 +30,26 @@ export const fileAPI = {
       )
     }
   },
+  processFilePisa: async (file, onProgress) => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    try {
+      const response = await api.post('/api/process-file-pisa', formData, {
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          )
+          onProgress?.(percentCompleted)
+        },
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(
+        error.response?.data?.detail || 'Errore durante il caricamento del file'
+      )
+    }
+  },
 
   downloadFile: async (fileId) => {
     try {

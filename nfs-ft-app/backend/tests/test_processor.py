@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import load_workbook
 import pytest
 
-from app.services.file_processor import NFSFTFileProcessor
+from app.services.file_processor import NFSFTFileProcessor, PisaFTFileProcessor
 
 
 @pytest.fixture
@@ -52,3 +53,56 @@ def test_process_file_removes_duplicates(sample_dataframe, tmp_path: Path):
     assert stats["duplicates_removed"] == 1
     assert stats["fase2_records"] == 1
     assert stats["fase3_records"] == 1
+
+
+def test_process_file_pisa_splits_by_sdi(tmp_path: Path):
+    columns = [
+        "Identificativo SDI",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G",
+        "Creditore",
+        "I",
+        "Importo Fattura",
+        "K",
+        "Importo Pagato",
+        "M",
+        "N",
+        "O",
+    ]
+    df = pd.DataFrame(
+        [
+            ["", "b1", "c1", "d1", "e1", "2025-01-10", "g1", "Ragione A", "i1", 120.0, "k1", 100.0, "m1", "n1", "o1"],
+            ["123", "b2", "c2", "d2", "e2", "", "g2", "Ragione B", "i2", 220.0, "k2", 200.0, "m2", "n2", "o2"],
+            [None, "b3", "c3", "d3", "e3", "2025-02-01", "g3", "Ragione C", "i3", 320.0, "k3", 300.0, "m3", "n3", "o3"],
+        ],
+        columns=columns,
+    )
+
+    processor = PisaFTFileProcessor()
+    input_path = tmp_path / "input_pisa.xlsx"
+    output_path = tmp_path / "output_pisa.xlsx"
+    df.to_excel(input_path, index=False)
+
+    stats = processor.process_file(input_path, output_path)
+
+    assert output_path.exists()
+    assert stats["total_records"] == 2
+    assert stats["fase2_records"] == 2
+    assert stats["fase3_records"] == 0
+
+    wb = load_workbook(output_path, data_only=True)
+    cartacee_ws = wb["Fatture Cartacee"]
+    elettroniche_ws = wb["Fatture Elettroniche"]
+
+    assert cartacee_ws["A1"].value == "NUMERO TOTALE"
+    assert cartacee_ws["B1"].value == "IMPONIBILE"
+    assert cartacee_ws["A2"].value == 2
+    assert cartacee_ws["B2"].value == 400.0
+
+    assert elettroniche_ws["A1"].value == "NUMERO TOTALE"
+    assert elettroniche_ws["B1"].value == "IMPONIBILE"
+    assert elettroniche_ws["A2"].value == 0

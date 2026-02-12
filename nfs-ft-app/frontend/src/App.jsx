@@ -5,7 +5,7 @@ import ProgressBar from './components/ProgressBar'
 import Summary from './components/Summary'
 import { fileAPI } from './services/api'
 
-function App() {
+const FileProcessingSection = ({ title, description, downloadPrefix, processFile }) => {
   const [file, setFile] = useState(null)
   const [processing, setProcessing] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -23,7 +23,7 @@ function App() {
     setStatus('Caricamento file...')
 
     try {
-      const response = await fileAPI.processFile(selectedFile, (uploadProgress) => {
+      const response = await processFile(selectedFile, (uploadProgress) => {
         setProgress(uploadProgress)
         if (uploadProgress === 100) {
           setStatus('Elaborazione in corso...')
@@ -50,7 +50,7 @@ function App() {
       const link = document.createElement('a')
       link.href = url
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
-      link.download = `File_Riepilogativo_NFS_FT_${timestamp}.xlsx`
+      link.download = `File_Riepilogativo_${downloadPrefix}_${timestamp}.xlsx`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -72,6 +72,68 @@ function App() {
   }
 
   return (
+    <div className="bg-white rounded-2xl shadow-xl p-8 space-y-8">
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <FileSpreadsheet className="w-8 h-8 text-blue-600" />
+          <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
+        </div>
+        {description ? <p className="text-gray-600">{description}</p> : null}
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
+            ✕
+          </button>
+        </div>
+      )}
+
+      {!processing && !result && (
+        <FileUpload onFileSelect={handleFileSelect} disabled={processing} />
+      )}
+
+      {processing && (
+        <div className="space-y-6">
+          <div className="flex items-center gap-3">
+            <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
+            <h3 className="text-lg font-semibold text-gray-700">Elaborazione in corso...</h3>
+          </div>
+          <ProgressBar progress={progress} status={status} />
+          <p className="text-sm text-gray-600 text-center">
+            File: <span className="font-medium">{file?.name}</span>
+          </p>
+        </div>
+      )}
+
+      {result && !processing && (
+        <div className="space-y-6">
+          <Summary
+            summary={result.summary}
+            onDownload={handleDownload}
+            downloading={downloading}
+            title={title}
+          />
+          <div className="pt-6 border-t border-gray-200">
+            <button
+              onClick={handleReset}
+              className="w-full md:w-auto px-6 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors duration-200 mx-auto block"
+            >
+              Elabora nuovo file
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function App() {
+  return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12">
@@ -84,53 +146,19 @@ function App() {
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8 space-y-8">
-          {error && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-red-800">{error}</p>
-              </div>
-              <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
-                ✕
-              </button>
-            </div>
-          )}
-
-          {!processing && !result && (
-            <FileUpload onFileSelect={handleFileSelect} disabled={processing} />
-          )}
-
-          {processing && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
-                <h3 className="text-lg font-semibold text-gray-700">Elaborazione in corso...</h3>
-              </div>
-              <ProgressBar progress={progress} status={status} />
-              <p className="text-sm text-gray-600 text-center">
-                File: <span className="font-medium">{file?.name}</span>
-              </p>
-            </div>
-          )}
-
-          {result && !processing && (
-            <div className="space-y-6">
-              <Summary
-                summary={result.summary}
-                onDownload={handleDownload}
-                downloading={downloading}
-              />
-              <div className="pt-6 border-t border-gray-200">
-                <button
-                  onClick={handleReset}
-                  className="w-full md:w-auto px-6 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors duration-200 mx-auto block"
-                >
-                  Elabora nuovo file
-                </button>
-              </div>
-            </div>
-          )}
+        <div className="grid grid-cols-1 gap-8">
+          <FileProcessingSection
+            title="FT NFS Pagato"
+            description="Analisi e riepilogo per il file NFS Pagato."
+            downloadPrefix="FT_NFS_Pagato"
+            processFile={fileAPI.processFile}
+          />
+          <FileProcessingSection
+            title="FT Pisa Pagato"
+            description="Analisi e riepilogo per il file Pisa Pagato."
+            downloadPrefix="FT_Pisa_Pagato"
+            processFile={fileAPI.processFilePisa}
+          />
         </div>
 
         <div className="mt-8 text-center text-sm text-gray-600">
