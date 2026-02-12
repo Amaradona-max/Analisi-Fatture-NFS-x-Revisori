@@ -143,10 +143,10 @@ class NFSFTFileProcessor:
                 "Tot. Imponibile",
                 "Importo Tot. Fatture",
                 "Imposta",
-                "Ritenuta D'acconto",
+                "Ritenuta d'acconto",
                 "N. Mandato",
                 "Tot. Importo Mandato",
-                "Id. SDI",
+                "Identificativo SDI",
             ]
 
             df_finale["Data Fatture"] = pd.to_datetime(df_finale["Data Fatture"], errors="coerce")
@@ -341,3 +341,143 @@ class NFSFTFileProcessor:
         ws.column_dimensions["B"].width = 40
         ws.column_dimensions["C"].width = 20
         ws.column_dimensions["D"].width = 20
+
+
+class PisaFTFileProcessor(NFSFTFileProcessor):
+    SELECTED_LETTERS = ["H", "C", "D", "E", "F", "O", "L", "J", "A"]
+    RENAME_MAP = {
+        "H": "Ragione Sociale",
+        "L": "Imponibile",
+        "J": "Imp.Tot. Fatture",
+    }
+    MONEY_COLUMNS = ["Imponibile", "Imp.Tot. Fatture"]
+
+    def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
+        try:
+            logger.info("Caricamento file Pisa Ricevute: %s", input_path)
+            df = pd.read_excel(input_path)
+
+            required_indices = self._letters_to_indices(self.SELECTED_LETTERS)
+            max_index = max(required_indices)
+            if df.shape[1] <= max_index:
+                missing_letters = [
+                    letter for letter, index in zip(self.SELECTED_LETTERS, required_indices) if index >= df.shape[1]
+                ]
+                raise ValueError(f"Colonne mancanti: {', '.join(missing_letters)}")
+
+            data_pagamento_column = df.columns[self._letters_to_indices(["F"])[0]]
+            pagamento_series = df[data_pagamento_column]
+            pagamento_mask = ~(pagamento_series.isna() | (pagamento_series.astype(str).str.strip() == ""))
+            df_pagato = df[pagamento_mask].copy()
+
+            selected_indices = self._letters_to_indices(self.SELECTED_LETTERS)
+            selected_columns = []
+            for letter, index in zip(self.SELECTED_LETTERS, selected_indices):
+                selected_columns.append(self.RENAME_MAP.get(letter) or df_pagato.columns[index])
+
+            df_finale = df_pagato.iloc[:, selected_indices].copy()
+            df_finale.columns = selected_columns
+
+            sdi_column = df.columns[self._letters_to_indices(["A"])[0]]
+            cartacee_df, elettroniche_df = self._split_by_sdi(df_finale, sdi_column)
+            self._create_excel_output(df_finale, cartacee_df, elettroniche_df, output_path)
+            stats = {
+                "total_records": len(df_finale),
+                "fase2_records": len(cartacee_df),
+                "fase3_records": len(elettroniche_df),
+                "duplicates_removed": 0,
+                "protocols_fase2": {"Cartacee": len(cartacee_df)},
+                "protocols_fase3": {"Elettroniche": len(elettroniche_df)},
+            }
+            logger.info("File Pisa Ricevute elaborato con successo: %s", stats)
+            return stats
+        except Exception as exc:
+            logger.error("Errore elaborazione file Pisa Ricevute: %s", str(exc))
+            raise
+
+    def _create_excel_output(
+        self,
+        df: pd.DataFrame,
+        cartacee_df: pd.DataFrame,
+        elettroniche_df: pd.DataFrame,
+        output_path: Path,
+    ) -> None:
+        wb = Workbook()
+
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        total_font = Font(bold=True)
+
+        self._add_dataframe_sheet(
+            wb,
+            "Dati",
+            df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+            money_columns=self.MONEY_COLUMNS,
+            use_active=True,
+        )
+
+        ws_cartacee = wb.create_sheet("Fatture Cartacee")
+        self._create_simple_summary_sheet(
+            ws_cartacee,
+            cartacee_df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+        )
+
+        ws_elettroniche = wb.create_sheet("Fatture Elettroniche")
+        self._create_simple_summary_sheet(
+            ws_elettroniche,
+            elettroniche_df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+        )
+
+        wb.save(output_path)
+
+    def _split_by_sdi(self, df: pd.DataFrame, sdi_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+        sdi_series = df[sdi_column]
+        empty_mask = sdi_series.isna() | (sdi_series.astype(str).str.strip() == "")
+        cartacee_df = df[empty_mask].copy()
+        elettroniche_df = df[~empty_mask].copy()
+        return cartacee_df, elettroniche_df
+
+    def _letters_to_indices(self, letters: list[str]) -> list[int]:
+        return [ord(letter) - ord("A") for letter in letters]
+
+    def _create_simple_summary_sheet(
+        self,
+        ws,
+        df: pd.DataFrame,
+        header_fill: PatternFill,
+        header_font: Font,
+        total_fill: PatternFill,
+        total_font: Font,
+    ) -> None:
+        ws["A1"] = "NUMERO TOTALE"
+        ws["B1"] = "IMPONIBILE"
+
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        imponibile_totale = pd.to_numeric(df["Imponibile"], errors="coerce").sum()
+        ws["A2"] = len(df)
+        ws["B2"] = imponibile_totale
+        ws["B2"].number_format = "#,##0.00"
+
+        for cell in ws[2]:
+            cell.fill = total_fill
+            cell.font = total_font
+
+        ws.column_dimensions["A"].width = 20
+        ws.column_dimensions["B"].width = 20
