@@ -50,6 +50,27 @@ export const fileAPI = {
       )
     }
   },
+  processCompare: async (fileNfs, filePisa, onProgress) => {
+    const formData = new FormData()
+    formData.append('file_nfs', fileNfs)
+    formData.append('file_pisa', filePisa)
+
+    try {
+      const response = await api.post('/api/process-compare', formData, {
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          )
+          onProgress?.(percentCompleted)
+        },
+      })
+      return response.data
+    } catch (error) {
+      throw new Error(
+        error.response?.data?.detail || 'Errore durante il caricamento del file'
+      )
+    }
+  },
 
   downloadFile: async (fileId) => {
     try {
