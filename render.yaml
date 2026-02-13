@@ -7,7 +7,7 @@ services:
     autoDeploy: true
     envVars:
       - key: ALLOWED_ORIGINS
-        value: https://analisi-fatture-nfs-x-revisori.vercel.app
+        value: https://analisi-fatture-nfs-x-revisori.vercel.app,https://frontend-rho-wheat-24.vercel.app
       - key: MAX_FILE_SIZE
         value: 52428800
       - key: FILE_RETENTION_HOURS
