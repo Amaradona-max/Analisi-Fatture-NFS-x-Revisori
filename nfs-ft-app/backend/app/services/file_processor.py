@@ -351,11 +351,12 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
         "J": "Imp.Tot. Fatture",
     }
     MONEY_COLUMNS = ["Imponibile", "Imp.Tot. Fatture"]
+    USECOLS_RANGE = "A:O"
 
     def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
         try:
             logger.info("Caricamento file Pisa Pagato: %s", input_path)
-            df = pd.read_excel(input_path)
+            df = pd.read_excel(input_path, usecols=self.USECOLS_RANGE)
 
             required_indices = self._letters_to_indices(self.SELECTED_LETTERS)
             max_index = max(required_indices)
@@ -531,7 +532,7 @@ class CompareFTFileProcessor(NFSFTFileProcessor):
         return summary
 
     def _prepare_nfs_df(self, input_path: Path) -> pd.DataFrame:
-        df = pd.read_excel(input_path)
+        df = pd.read_excel(input_path, usecols=self.USECOLS_RANGE)
         self.validate_file(df)
         df["FAT_PROT"] = df["FAT_PROT"].astype(str).str.strip()
         df_senza_duplicati = df.drop_duplicates(subset=["FAT_NUM", "C_NOME"]).copy()
