@@ -537,7 +537,7 @@ class CompareFTFileProcessor(NFSFTFileProcessor):
         return summary
 
     def _prepare_nfs_df(self, input_path: Path) -> pd.DataFrame:
-        df = pd.read_excel(input_path, usecols=self.USECOLS_RANGE, dtype=str)
+        df = pd.read_excel(input_path, dtype=str)
         self.validate_file(df)
         df["FAT_PROT"] = df["FAT_PROT"].astype(str).str.strip()
         df_senza_duplicati = df.drop_duplicates(subset=["FAT_NUM", "C_NOME"]).copy()
