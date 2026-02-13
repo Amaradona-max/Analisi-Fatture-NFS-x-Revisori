@@ -361,6 +361,21 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
 function App() {
   const [lastNfsFile, setLastNfsFile] = useState(null)
   const [lastPisaFile, setLastPisaFile] = useState(null)
+  const [closingDay, setClosingDay] = useState(false)
+  const [closingMessage, setClosingMessage] = useState('')
+
+  const handleCloseDay = async () => {
+    setClosingDay(true)
+    setClosingMessage('')
+    try {
+      const response = await fileAPI.closeDay('Saluti fine giornata')
+      setClosingMessage(`Riepilogo aggiornato (${response.timestamp})`)
+    } catch (error) {
+      setClosingMessage(error.message)
+    } finally {
+      setClosingDay(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -393,8 +408,18 @@ function App() {
           <CompareProcessingSection lastNfsFile={lastNfsFile} lastPisaFile={lastPisaFile} />
         </div>
 
-        <div className="mt-8 text-center text-sm text-gray-600">
+        <div className="mt-8 text-center text-sm text-gray-600 space-y-3">
           <p>Versione 1.0.0 | Supporto: .xlsx | Max 50MB</p>
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={handleCloseDay}
+              disabled={closingDay}
+              className="px-5 py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:text-gray-400 disabled:border-gray-300 font-semibold rounded-lg transition-colors duration-200"
+            >
+              {closingDay ? 'Chiusura in corso...' : 'Saluti fine giornata'}
+            </button>
+            {closingMessage ? <p className="text-sm text-gray-600">{closingMessage}</p> : null}
+          </div>
         </div>
       </div>
     </div>

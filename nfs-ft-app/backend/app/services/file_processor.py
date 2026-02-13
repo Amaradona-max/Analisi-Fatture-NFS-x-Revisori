@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import logging
 
 import pandas as pd
@@ -92,6 +92,15 @@ class NFSFTFileProcessor:
         if missing_cols:
             raise ValueError(f"Colonne mancanti: {', '.join(missing_cols)}")
 
+    def _filter_january_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
+        if date_column not in df.columns:
+            return df.iloc[0:0].copy()
+        date_series = pd.to_datetime(df[date_column], errors="coerce")
+        start = pd.Timestamp(year=2025, month=1, day=1)
+        end = pd.Timestamp(year=2025, month=1, day=31)
+        mask = date_series.between(start, end)
+        return df[mask].copy()
+
     def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
         try:
             logger.info("Caricamento file: %s", input_path)
@@ -136,7 +145,7 @@ class NFSFTFileProcessor:
                 "Ragione Sociale",
                 "Data Fatture",
                 "N. Fatture",
-                "Data Ricevimento",
+                "Data Registrazione",
                 "Protocollo",
                 "N. Protocollo",
                 "Imposta",
@@ -149,12 +158,33 @@ class NFSFTFileProcessor:
             ]
 
             df_finale["Data Fatture"] = pd.to_datetime(df_finale["Data Fatture"], errors="coerce")
-            df_finale["Data Ricevimento"] = pd.to_datetime(df_finale["Data Ricevimento"], errors="coerce")
+            df_finale["Data Registrazione"] = pd.to_datetime(df_finale["Data Registrazione"], errors="coerce")
 
-            df_finale = df_finale.sort_values("Data Ricevimento")
+            df_finale = df_finale.sort_values("Data Registrazione")
+
+            df_dati = df_finale.copy()
+            if "Data Registrazione" in df_dati.columns:
+                df_dati["Imponibile"] = df_dati["Data Registrazione"]
+                df_dati = df_dati.drop(columns=["Data Registrazione"], errors="ignore")
+            df_dati = df_dati.drop(columns=["Tot. Imponibile"], errors="ignore")
+            ordered_columns = [
+                "Ragione Sociale",
+                "Data Fatture",
+                "N. Fatture",
+                "Protocollo",
+                "N. Protocollo",
+                "Imposta",
+                "Imponibile",
+                "Tot. Imp. Fatture",
+                "Rit. Codice Tributo",
+                "Rit. Imposta",
+                "Rit. Imp.",
+                "Identificativo SDI",
+            ]
+            df_dati = df_dati[[col for col in ordered_columns if col in df_dati.columns]]
 
             stats = self._calculate_stats(df_finale, duplicati_rimossi)
-            self._create_excel_output(df_finale, output_path)
+            self._create_excel_output(df_finale, output_path, display_df=df_dati)
 
             logger.info("File elaborato con successo: %s", stats)
             return stats
@@ -181,7 +211,12 @@ class NFSFTFileProcessor:
             counts[prot] = len(df[df["Protocollo"] == prot])
         return counts
 
-    def _create_excel_output(self, df: pd.DataFrame, output_path: Path) -> None:
+    def _create_excel_output(
+        self,
+        df: pd.DataFrame,
+        output_path: Path,
+        display_df: Optional[pd.DataFrame] = None,
+    ) -> None:
         wb = Workbook()
 
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
@@ -192,12 +227,12 @@ class NFSFTFileProcessor:
         ws_dati = self._add_dataframe_sheet(
             wb,
             "Dati",
-            df,
+            display_df if display_df is not None else df,
             header_fill,
             header_font,
             total_fill,
             total_font,
-            date_columns=["Data Fatture", "Data Ricevimento"],
+            date_columns=["Data Fatture", "Data Registrazione", "Imponibile"],
             money_columns=["Imposta", "Tot. Imponibile", "Tot. Imp. Fatture", "Rit. Imposta", "Rit. Imp."],
             use_active=True,
         )
@@ -266,6 +301,7 @@ class NFSFTFileProcessor:
 
         date_columns = date_columns or []
         money_columns = money_columns or []
+        money_columns = [column for column in money_columns if column in df.columns]
         header_index = {cell.value: cell.column for cell in ws[1]}
         money_format = "#,##0.00"
 
@@ -381,10 +417,13 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
 
             df_finale = df_pagato.iloc[:, selected_indices].copy()
             df_finale.columns = selected_columns
+            data_pagamento_column_name = selected_columns[self.SELECTED_LETTERS.index("F")]
+            df_finale = self._filter_january_2025(df_finale, data_pagamento_column_name)
 
             sdi_column = df.columns[self._letters_to_indices(["A"])[0]]
             cartacee_df, elettroniche_df = self._split_by_sdi(df_finale, sdi_column)
-            self._create_excel_output(df_finale, cartacee_df, elettroniche_df, output_path)
+            df_dati = self._build_pisa_dati(df_finale)
+            self._create_excel_output(df_finale, cartacee_df, elettroniche_df, output_path, display_df=df_dati)
             stats = {
                 "total_records": len(df_finale),
                 "fase2_records": len(cartacee_df),
@@ -405,6 +444,7 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
         cartacee_df: pd.DataFrame,
         elettroniche_df: pd.DataFrame,
         output_path: Path,
+        display_df: Optional[pd.DataFrame] = None,
     ) -> None:
         wb = Workbook()
 
@@ -413,21 +453,25 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
         total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
         total_font = Font(bold=True)
 
-        if len(df) <= self.MAX_DETAIL_ROWS:
-            self._add_dataframe_sheet(
-                wb,
-                "Dati",
-                df,
-                header_fill,
-                header_font,
-                total_fill,
-                total_font,
-                date_columns=[column for column in df.columns if "data" in str(column).lower()],
-                date_format="dd/mm/yyyy",
-                money_columns=self.MONEY_COLUMNS,
-                auto_size=False,
-                use_active=True,
-            )
+        dati_df = display_df if display_df is not None else df
+        self._add_dataframe_sheet(
+            wb,
+            "Dati",
+            dati_df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+            date_columns=[column for column in dati_df.columns if "data" in str(column).lower()],
+            date_format="dd/mm/yyyy",
+            money_columns=[
+                column
+                for column in ("Imposta", "Imponibile", "Tot. Imp. Fatture", "Rit. Imposta", "Rit. Imp.")
+                if column in dati_df.columns
+            ],
+            auto_size=False,
+            use_active=True,
+        )
 
         ws_cartacee = wb.create_sheet("Fatture Cartacee")
         self._create_simple_summary_sheet(
@@ -450,6 +494,36 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
         )
 
         wb.save(output_path)
+
+    def _build_pisa_dati(self, df: pd.DataFrame) -> pd.DataFrame:
+        selected_columns = list(df.columns)
+        col_creditore = selected_columns[0] if len(selected_columns) > 0 else None
+        col_c = selected_columns[1] if len(selected_columns) > 1 else None
+        col_d = selected_columns[2] if len(selected_columns) > 2 else None
+        col_e = selected_columns[3] if len(selected_columns) > 3 else None
+        col_f = selected_columns[4] if len(selected_columns) > 4 else None
+        col_o = selected_columns[5] if len(selected_columns) > 5 else None
+        col_imponibile = selected_columns[6] if len(selected_columns) > 6 else None
+        col_tot_fatture = selected_columns[7] if len(selected_columns) > 7 else None
+        col_sdi = selected_columns[8] if len(selected_columns) > 8 else None
+
+        df_dati = pd.DataFrame(
+            {
+                "Ragione Sociale": df[col_creditore] if col_creditore else "",
+                "Data Fatture": df[col_c] if col_c else "",
+                "N. Fatture": df[col_d] if col_d else "",
+                "Protocollo": df[col_e] if col_e else "",
+                "N. Protocollo": df[col_f] if col_f else "",
+                "Imposta": df[col_o] if col_o else "",
+                "Imponibile": df[col_imponibile] if col_imponibile else "",
+                "Tot. Imp. Fatture": df[col_tot_fatture] if col_tot_fatture else "",
+                "Rit. Codice Tributo": "",
+                "Rit. Imposta": "",
+                "Rit. Imp.": "",
+                "Identificativo SDI": df[col_sdi] if col_sdi else "",
+            }
+        )
+        return df_dati
 
     def _split_by_sdi(self, df: pd.DataFrame, sdi_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         sdi_series = df[sdi_column]
@@ -504,7 +578,7 @@ class CompareFTFileProcessor(NFSFTFileProcessor):
         pisa_cartacee, pisa_elettroniche = self._split_by_sdi(pisa_jan, self._sdi_column_name)
         pisa_importo_column = self._get_pisa_importo_column(pisa_jan)
         pisa_non_in_nfs = self._filter_pisa_non_in_nfs(pisa_elettroniche, nfs_elettroniche, self._sdi_column_name)
-        pisa_non_in_nfs = self._dedupe_by_sdi(pisa_non_in_nfs, self._sdi_column_name)
+        pisa_diff = self._dedupe_by_sdi(pisa_non_in_nfs, self._sdi_column_name)
 
         nfs_elettroniche_count = self._count_unique_sdi(nfs_elettroniche, "Identificativo SDI")
         pisa_elettroniche_count = self._count_unique_sdi(pisa_elettroniche, self._sdi_column_name)
@@ -533,7 +607,7 @@ class CompareFTFileProcessor(NFSFTFileProcessor):
             },
         }
 
-        self._create_compare_output(summary, pisa_non_in_nfs, output_path)
+        self._create_compare_output(summary, pisa_diff, output_path)
         return summary
 
     def _prepare_nfs_df(self, input_path: Path) -> pd.DataFrame:
@@ -570,7 +644,7 @@ class CompareFTFileProcessor(NFSFTFileProcessor):
             "Ragione Sociale",
             "Data Fatture",
             "N. Fatture",
-            "Data Ricevimento",
+            "Data Registrazione",
             "Protocollo",
             "N. Protocollo",
             "Imposta",
@@ -581,7 +655,7 @@ class CompareFTFileProcessor(NFSFTFileProcessor):
             "Rit. Imp.",
             "Identificativo SDI",
         ]
-        df_finale["Data Ricevimento"] = pd.to_datetime(df_finale["Data Ricevimento"], errors="coerce")
+        df_finale["Data Registrazione"] = pd.to_datetime(df_finale["Data Registrazione"], errors="coerce")
         return df_finale
 
     def _prepare_pisa_df(self, input_path: Path) -> pd.DataFrame:

@@ -89,6 +89,24 @@ export const fileAPI = {
     const response = await api.get('/api/health')
     return response.data
   },
+  closeDay: async (message) => {
+    try {
+      const response = await api.post(
+        '/api/close-day',
+        { message },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+      return response.data
+    } catch (error) {
+      throw new Error(
+        error.response?.data?.detail || 'Errore durante la chiusura della giornata'
+      )
+    }
+  },
 }
 
 export default api

@@ -4,7 +4,7 @@ import logging
 import shutil
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
@@ -175,6 +175,24 @@ async def process_compare(file_nfs: UploadFile = File(...), file_pisa: UploadFil
         if output_path.exists():
             output_path.unlink()
         raise HTTPException(status_code=500, detail="Errore durante il confronto dei file")
+
+
+@router.post("/close-day")
+async def close_day(payload: dict = Body(...)):
+    message = str(payload.get("message", "")).strip()
+    if "saluti fine giornata" not in message.lower():
+        raise HTTPException(status_code=400, detail="Messaggio di chiusura non valido")
+
+    riepilogo_path = settings.BASE_DIR.parent / "Riepilogo_Istruzioni_App.md"
+    if not riepilogo_path.exists():
+        raise HTTPException(status_code=404, detail="Riepilogo istruzioni non trovato")
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    entry = f"\n## Chiusura giornata {timestamp}\n- {message}\n- Riepilogo aggiornato automaticamente.\n"
+    content = riepilogo_path.read_text(encoding="utf-8")
+    riepilogo_path.write_text(content + entry, encoding="utf-8")
+
+    return {"success": True, "timestamp": timestamp}
 
 
 @router.get("/download/{file_id}")

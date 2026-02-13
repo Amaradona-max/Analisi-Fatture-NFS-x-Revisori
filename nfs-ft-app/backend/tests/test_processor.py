@@ -90,8 +90,8 @@ def test_process_file_pisa_splits_by_sdi(tmp_path: Path):
     stats = processor.process_file(input_path, output_path)
 
     assert output_path.exists()
-    assert stats["total_records"] == 2
-    assert stats["fase2_records"] == 2
+    assert stats["total_records"] == 1
+    assert stats["fase2_records"] == 1
     assert stats["fase3_records"] == 0
 
     wb = load_workbook(output_path, data_only=True)
@@ -100,8 +100,8 @@ def test_process_file_pisa_splits_by_sdi(tmp_path: Path):
 
     assert cartacee_ws["A1"].value == "NUMERO TOTALE"
     assert cartacee_ws["B1"].value == "IMPONIBILE"
-    assert cartacee_ws["A2"].value == 2
-    assert cartacee_ws["B2"].value == 400.0
+    assert cartacee_ws["A2"].value == 1
+    assert cartacee_ws["B2"].value == 100.0
 
     assert elettroniche_ws["A1"].value == "NUMERO TOTALE"
     assert elettroniche_ws["B1"].value == "IMPONIBILE"
