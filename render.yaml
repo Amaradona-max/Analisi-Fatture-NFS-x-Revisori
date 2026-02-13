@@ -2,7 +2,7 @@ services:
   - type: web
     name: nfs-ft-backend
     runtime: docker
-    rootDir: backend
+    rootDir: nfs-ft-app/backend
     plan: free
     autoDeploy: true
     envVars:
