@@ -241,6 +241,7 @@ class NFSFTFileProcessor:
         money_columns=None,
         date_format: str = "mm/dd/yyyy",
         add_totals: bool = True,
+        auto_size: bool = True,
         use_active: bool = False,
     ):
         ws = wb.active if use_active else wb.create_sheet(title)
@@ -254,13 +255,14 @@ class NFSFTFileProcessor:
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        for column in ws.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
-            for cell in column:
-                if cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+        if auto_size:
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    if cell.value:
+                        max_length = max(max_length, len(str(cell.value)))
+                ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
 
         date_columns = date_columns or []
         money_columns = money_columns or []
@@ -421,6 +423,7 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
             date_columns=[column for column in df.columns if "data" in str(column).lower()],
             date_format="dd/mm/yyyy",
             money_columns=self.MONEY_COLUMNS,
+            auto_size=False,
             use_active=True,
         )
 
