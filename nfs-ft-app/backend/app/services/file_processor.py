@@ -354,6 +354,7 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
     }
     MONEY_COLUMNS = ["Imponibile", "Imp.Tot. Fatture"]
     USECOLS_RANGE = "A:O"
+    MAX_DETAIL_ROWS = 5000
 
     def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
         try:
@@ -412,20 +413,21 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
         total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
         total_font = Font(bold=True)
 
-        self._add_dataframe_sheet(
-            wb,
-            "Dati",
-            df,
-            header_fill,
-            header_font,
-            total_fill,
-            total_font,
-            date_columns=[column for column in df.columns if "data" in str(column).lower()],
-            date_format="dd/mm/yyyy",
-            money_columns=self.MONEY_COLUMNS,
-            auto_size=False,
-            use_active=True,
-        )
+        if len(df) <= self.MAX_DETAIL_ROWS:
+            self._add_dataframe_sheet(
+                wb,
+                "Dati",
+                df,
+                header_fill,
+                header_font,
+                total_fill,
+                total_font,
+                date_columns=[column for column in df.columns if "data" in str(column).lower()],
+                date_format="dd/mm/yyyy",
+                money_columns=self.MONEY_COLUMNS,
+                auto_size=False,
+                use_active=True,
+            )
 
         ws_cartacee = wb.create_sheet("Fatture Cartacee")
         self._create_simple_summary_sheet(
