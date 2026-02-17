@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
-from app.services.file_processor import NFSFTFileProcessor, PisaFTFileProcessor
+from app.services.file_processor import CompareFTFileProcessor, NFSFTFileProcessor, PisaFTFileProcessor
 
 
 router = APIRouter()
@@ -111,6 +111,70 @@ async def process_file_pisa(file: UploadFile = File(...)):
         if output_path.exists():
             output_path.unlink()
         raise HTTPException(status_code=500, detail="Errore durante l'elaborazione del file")
+
+
+@router.post("/process-compare")
+async def process_compare(nfs_file: UploadFile = File(...), pisa_file: UploadFile = File(...)):
+    file_ext_nfs = Path(nfs_file.filename).suffix.lower()
+    file_ext_pisa = Path(pisa_file.filename).suffix.lower()
+    if file_ext_nfs not in settings.ALLOWED_EXTENSIONS or file_ext_pisa not in settings.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Formato file non valido. Formati supportati: {', '.join(settings.ALLOWED_EXTENSIONS)}",
+        )
+
+    file_id = str(uuid.uuid4())
+    upload_path_nfs = settings.UPLOAD_DIR / f"{file_id}_nfs_input{file_ext_nfs}"
+    upload_path_pisa = settings.UPLOAD_DIR / f"{file_id}_pisa_input{file_ext_pisa}"
+    output_path = settings.OUTPUT_DIR / f"{file_id}_output.xlsx"
+
+    try:
+        with upload_path_nfs.open("wb") as buffer:
+            shutil.copyfileobj(nfs_file.file, buffer)
+        with upload_path_pisa.open("wb") as buffer:
+            shutil.copyfileobj(pisa_file.file, buffer)
+
+        file_size_nfs = upload_path_nfs.stat().st_size
+        file_size_pisa = upload_path_pisa.stat().st_size
+        if file_size_nfs > settings.MAX_FILE_SIZE or file_size_pisa > settings.MAX_FILE_SIZE:
+            if upload_path_nfs.exists():
+                upload_path_nfs.unlink()
+            if upload_path_pisa.exists():
+                upload_path_pisa.unlink()
+            raise HTTPException(
+                status_code=400,
+                detail=f"File troppo grande. Dimensione massima: {settings.MAX_FILE_SIZE / 1024 / 1024:.0f}MB",
+            )
+
+        processor = CompareFTFileProcessor()
+        summary = processor.process_files(upload_path_nfs, upload_path_pisa, output_path)
+
+        upload_path_nfs.unlink()
+        upload_path_pisa.unlink()
+
+        return {
+            "success": True,
+            "file_id": file_id,
+            "summary": summary,
+            "download_url": f"/api/download/{file_id}",
+        }
+    except ValueError as exc:
+        if upload_path_nfs.exists():
+            upload_path_nfs.unlink()
+        if upload_path_pisa.exists():
+            upload_path_pisa.unlink()
+        if output_path.exists():
+            output_path.unlink()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Errore confronto file: %s", str(exc))
+        if upload_path_nfs.exists():
+            upload_path_nfs.unlink()
+        if upload_path_pisa.exists():
+            upload_path_pisa.unlink()
+        if output_path.exists():
+            output_path.unlink()
+        raise HTTPException(status_code=500, detail="Errore durante il confronto dei file")
 
 
 @router.get("/download/{file_id}")
