@@ -214,6 +214,23 @@ async def process_compare(background_tasks: BackgroundTasks, nfs_file: UploadFil
 async def get_task_status(task_id: str):
     task = tasks.get(task_id)
     if not task:
+        output_path = settings.OUTPUT_DIR / f"{task_id}_output.xlsx"
+        if output_path.exists():
+            return {
+                "status": "done",
+                "file_id": task_id,
+                "download_url": f"/api/download/{task_id}",
+            }
+
+        has_upload_artifacts = any(
+            path.name.startswith(task_id) for path in settings.UPLOAD_DIR.glob(f"{task_id}*")
+        )
+        if has_upload_artifacts:
+            return {
+                "status": "processing",
+                "file_id": task_id,
+            }
+
         raise HTTPException(status_code=404, detail="Task non trovato")
     return task
 
