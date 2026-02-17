@@ -291,13 +291,12 @@ class NFSFTFileProcessor:
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
         if auto_size:
-            for column in ws.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
-                ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+            sample_rows = 50
+            max_row = min(ws.max_row, sample_rows + 1)
+            for column in ws.iter_cols(max_row=max_row):
+                max_len = max((len(str(c.value or "")) for c in column), default=8)
+                letter = column[0].column_letter
+                ws.column_dimensions[letter].width = min(max_len + 2, 45)
 
         date_columns = date_columns or []
         money_columns = money_columns or []

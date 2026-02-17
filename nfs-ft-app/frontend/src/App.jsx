@@ -31,11 +31,12 @@ const FileProcessingSection = ({
     try {
       const response = await processFile(selectedFile, (uploadProgress) => {
         setProgress(uploadProgress)
-        if (uploadProgress === 100) {
+        if (uploadProgress >= 40) {
           setStatus('Elaborazione in corso...')
         }
       })
 
+      setProgress(100)
       setStatus('Completato!')
       setResult(response)
       setProcessing(false)
@@ -174,14 +175,16 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
     try {
       const response = await fileAPI.processCompare(nfsFile, pisaFile, (uploadProgress) => {
         setProgress(uploadProgress)
-        if (uploadProgress === 100) {
+        if (uploadProgress >= 40) {
           setStatus('Elaborazione in corso...')
         }
       })
+      setProgress(100)
       setStatus('Completato!')
       setResult(response)
       setProcessing(false)
     } catch (err) {
+      setError(err.message)
       setError(err.message)
       setProcessing(false)
     }
