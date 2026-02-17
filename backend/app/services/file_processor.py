@@ -412,11 +412,14 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
     def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
         try:
             logger.info("Caricamento file Pisa Ricevute: %s", input_path)
-            df = pd.read_excel(input_path, dtype=str)
-
-            missing_columns = [col for col in self.INPUT_REQUIRED_COLUMNS if col not in df.columns]
-            if missing_columns:
-                raise ValueError(f"Colonne mancanti: {', '.join(missing_columns)}")
+            try:
+                df = pd.read_excel(input_path, usecols=self.INPUT_REQUIRED_COLUMNS, dtype=str)
+            except ValueError:
+                df_header = pd.read_excel(input_path, nrows=0)
+                missing_columns = [col for col in self.INPUT_REQUIRED_COLUMNS if col not in df_header.columns]
+                if missing_columns:
+                    raise ValueError(f"Colonne mancanti: {', '.join(missing_columns)}")
+                raise
 
             totale_fattura = pd.to_numeric(
                 df["Importo fattura"].astype(str).str.replace(",", ".", regex=False),
