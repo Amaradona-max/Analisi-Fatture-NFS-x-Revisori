@@ -49,7 +49,11 @@ export const fileAPI = {
           onProgress?.(Math.round(percentCompleted * 0.4))
         },
       })
-      return await pollTask(response.data.task_id, (p) => onProgress?.(40 + p * 0.6))
+      const data = response.data
+      if (data?.task_id) {
+        return await pollTask(data.task_id, (p) => onProgress?.(40 + p * 0.6))
+      }
+      return data
     } catch (error) {
       throw new Error(
         error.response?.data?.detail || 'Errore durante il caricamento del file'
@@ -68,7 +72,11 @@ export const fileAPI = {
           onProgress?.(Math.round(percentCompleted * 0.4))
         },
       })
-      return await pollTask(response.data.task_id, (p) => onProgress?.(40 + p * 0.6))
+      const data = response.data
+      if (data?.task_id) {
+        return await pollTask(data.task_id, (p) => onProgress?.(40 + p * 0.6))
+      }
+      return data
     } catch (error) {
       throw new Error(
         error.response?.data?.detail || 'Errore durante il caricamento del file'
@@ -88,7 +96,11 @@ export const fileAPI = {
           onProgress?.(Math.round(percentCompleted * 0.4))
         },
       })
-      return await pollTask(response.data.task_id, (p) => onProgress?.(40 + p * 0.6))
+      const data = response.data
+      if (data?.task_id) {
+        return await pollTask(data.task_id, (p) => onProgress?.(40 + p * 0.6))
+      }
+      return data
     } catch (error) {
       throw new Error(error.response?.data?.detail || 'Errore durante il confronto dei file')
     }
