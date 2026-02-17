@@ -526,7 +526,12 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
 
     def _split_by_sdi(self, df: pd.DataFrame, sdi_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         sdi_series = df[sdi_column]
-        empty_mask = sdi_series.isna() | (sdi_series.astype(str).str.strip() == "")
+        normalized = sdi_series.astype(str).str.strip().where(~sdi_series.isna(), "")
+        normalized = normalized.str.lower().str.replace(",", ".", regex=False)
+        empty_text_mask = normalized.isin(["", "nan", "none", "null"])
+        numeric = pd.to_numeric(normalized, errors="coerce")
+        zero_mask = numeric.eq(0) & ~numeric.isna()
+        empty_mask = empty_text_mask | zero_mask
         cartacee_df = df[empty_mask].copy()
         elettroniche_df = df[~empty_mask].copy()
         return cartacee_df, elettroniche_df
@@ -699,10 +704,12 @@ class PisaRicevuteFTFileProcessor(NFSFTFileProcessor):
 
     def _split_by_sdi(self, df: pd.DataFrame, sdi_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         sdi_series = df[sdi_column]
-        normalized = sdi_series.astype(str).str.strip()
-        normalized_lower = normalized.str.lower()
-        zero_mask = normalized_lower.str.fullmatch(r"0+(\.0+)?").fillna(False)
-        empty_mask = normalized_lower.isin(["", "nan", "none", "null"]) | zero_mask
+        normalized = sdi_series.astype(str).str.strip().where(~sdi_series.isna(), "")
+        normalized = normalized.str.lower().str.replace(",", ".", regex=False)
+        empty_text_mask = normalized.isin(["", "nan", "none", "null"])
+        numeric = pd.to_numeric(normalized, errors="coerce")
+        zero_mask = numeric.eq(0) & ~numeric.isna()
+        empty_mask = empty_text_mask | zero_mask
         cartacee_df = df[empty_mask].copy()
         elettroniche_df = df[~empty_mask].copy()
         return cartacee_df, elettroniche_df
@@ -858,7 +865,12 @@ class CompareFTFileProcessor(NFSFTFileProcessor):
 
     def _split_by_sdi(self, df: pd.DataFrame, sdi_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
         sdi_series = df[sdi_column]
-        empty_mask = sdi_series.isna() | (sdi_series.astype(str).str.strip() == "")
+        normalized = sdi_series.astype(str).str.strip().where(~sdi_series.isna(), "")
+        normalized = normalized.str.lower().str.replace(",", ".", regex=False)
+        empty_text_mask = normalized.isin(["", "nan", "none", "null"])
+        numeric = pd.to_numeric(normalized, errors="coerce")
+        zero_mask = numeric.eq(0) & ~numeric.isna()
+        empty_mask = empty_text_mask | zero_mask
         cartacee_df = df[empty_mask].copy()
         elettroniche_df = df[~empty_mask].copy()
         return cartacee_df, elettroniche_df
