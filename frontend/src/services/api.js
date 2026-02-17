@@ -11,6 +11,24 @@ const api = axios.create({
   },
 })
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function pollTask(taskId, onProgress) {
+  while (true) {
+    await sleep(1500)
+    const res = await api.get(`/api/task/${taskId}`)
+    const { status, summary, error, file_id, download_url } = res.data
+    if (status === 'done') {
+      onProgress?.(100)
+      return { success: true, file_id: file_id || taskId, summary, download_url }
+    }
+    if (status === 'error') {
+      throw new Error(error || 'Errore durante l’elaborazione del file')
+    }
+    onProgress?.(50)
+  }
+}
+
 export const fileAPI = {
   processFile: async (file, onProgress) => {
     const formData = new FormData()
@@ -19,13 +37,12 @@ export const fileAPI = {
     try {
       const response = await api.post('/api/process-file', formData, {
         onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          )
-          onProgress?.(percentCompleted)
+          if (!progressEvent.total) return
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onProgress?.(Math.round(percentCompleted * 0.4))
         },
       })
-      return response.data
+      return await pollTask(response.data.task_id, (p) => onProgress?.(40 + p * 0.6))
     } catch (error) {
       throw new Error(
         error.response?.data?.detail || 'Errore durante il caricamento del file'
@@ -39,13 +56,12 @@ export const fileAPI = {
     try {
       const response = await api.post('/api/process-file-pisa', formData, {
         onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          )
-          onProgress?.(percentCompleted)
+          if (!progressEvent.total) return
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onProgress?.(Math.round(percentCompleted * 0.4))
         },
       })
-      return response.data
+      return await pollTask(response.data.task_id, (p) => onProgress?.(40 + p * 0.6))
     } catch (error) {
       throw new Error(
         error.response?.data?.detail || 'Errore durante il caricamento del file'
@@ -60,11 +76,12 @@ export const fileAPI = {
     try {
       const response = await api.post('/api/process-compare', formData, {
         onUploadProgress: (progressEvent) => {
+          if (!progressEvent.total) return
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-          onProgress?.(percentCompleted)
+          onProgress?.(Math.round(percentCompleted * 0.4))
         },
       })
-      return response.data
+      return await pollTask(response.data.task_id, (p) => onProgress?.(40 + p * 0.6))
     } catch (error) {
       throw new Error(error.response?.data?.detail || 'Errore durante il confronto dei file')
     }

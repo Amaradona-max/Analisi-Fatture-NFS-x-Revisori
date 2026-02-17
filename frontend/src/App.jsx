@@ -355,6 +355,10 @@ function App() {
 
   useEffect(() => {
     fileAPI.healthCheck().catch(() => {})
+    const interval = setInterval(() => {
+      fileAPI.healthCheck().catch(() => {})
+    }, 10 * 60 * 1000)
+    return () => clearInterval(interval)
   }, [])
 
   return (
