@@ -216,10 +216,15 @@ async def get_task_status(task_id: str):
                 "download_url": f"/api/download/{task_id}",
             }
 
-        has_upload_artifacts = any(
-            path.name.startswith(task_id) for path in settings.UPLOAD_DIR.glob(f"{task_id}*")
-        )
-        if has_upload_artifacts:
+        artifacts = list(settings.UPLOAD_DIR.glob(f"{task_id}*"))
+        if artifacts:
+            latest_mtime = max(p.stat().st_mtime for p in artifacts)
+            if datetime.now().timestamp() - latest_mtime > 20 * 60:
+                return {
+                    "status": "error",
+                    "file_id": task_id,
+                    "error": "Elaborazione scaduta. Ricarica il file e riprova.",
+                }
             return {
                 "status": "processing",
                 "file_id": task_id,

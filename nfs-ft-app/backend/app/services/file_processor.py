@@ -634,7 +634,10 @@ class PisaRicevuteFTFileProcessor(NFSFTFileProcessor):
             df_finale = df_finale[self.OUTPUT_COLUMNS]
 
             cartacee_df, elettroniche_df = self._split_by_sdi(df_finale, "Identificativo SDI")
-            self._create_excel_output(df_finale, cartacee_df, elettroniche_df, output_path, display_df=df_finale)
+            display_df = df_finale
+            if len(display_df) > self.MAX_DETAIL_ROWS:
+                display_df = display_df.head(self.MAX_DETAIL_ROWS).copy()
+            self._create_excel_output(df_finale, cartacee_df, elettroniche_df, output_path, display_df=display_df)
             stats = {
                 "total_records": len(df_finale),
                 "fase2_records": len(cartacee_df),

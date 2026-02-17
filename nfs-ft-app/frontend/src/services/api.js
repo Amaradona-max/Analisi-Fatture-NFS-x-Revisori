@@ -21,6 +21,7 @@ const api = axios.create({
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function pollTask(taskId, onProgress) {
+  let p = 0
   while (true) {
     await sleep(1500)
     const res = await api.get(`/api/task/${taskId}`)
@@ -32,7 +33,8 @@ async function pollTask(taskId, onProgress) {
     if (status === 'error') {
       throw new Error(error || 'Errore durante l’elaborazione del file')
     }
-    onProgress?.(50)
+    p = Math.min(90, p + 5)
+    onProgress?.(p)
   }
 }
 
