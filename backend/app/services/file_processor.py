@@ -593,22 +593,28 @@ class CompareFTFileProcessor:
     PISA_REQUIRED_COLUMNS = ["Creditore", "Numero fattura", "Identificativo SDI", "Data emissione", "Importo fattura"]
 
     def process_files(self, nfs_input_path: Path, pisa_input_path: Path, output_path: Path) -> Dict[str, Any]:
-        df_nfs_raw = pd.read_excel(nfs_input_path)
-        df_pisa_raw = pd.read_excel(pisa_input_path, dtype=str)
+        try:
+            df_nfs_raw = pd.read_excel(nfs_input_path, usecols=self.NFS_REQUIRED_COLUMNS)
+        except ValueError:
+            df_nfs_header = pd.read_excel(nfs_input_path, nrows=0)
+            missing_nfs = [col for col in self.NFS_REQUIRED_COLUMNS if col not in df_nfs_header.columns]
+            if missing_nfs:
+                raise ValueError(f"Colonne mancanti nel file NFS: {', '.join(missing_nfs)}")
+            raise
 
-        missing_nfs = [col for col in self.NFS_REQUIRED_COLUMNS if col not in df_nfs_raw.columns]
-        if missing_nfs:
-            raise ValueError(f"Colonne mancanti nel file NFS: {', '.join(missing_nfs)}")
+        try:
+            df_pisa_raw = pd.read_excel(pisa_input_path, usecols=self.PISA_REQUIRED_COLUMNS, dtype=str)
+        except ValueError:
+            df_pisa_header = pd.read_excel(pisa_input_path, nrows=0)
+            missing_pisa = [col for col in self.PISA_REQUIRED_COLUMNS if col not in df_pisa_header.columns]
+            if missing_pisa:
+                raise ValueError(f"Colonne mancanti nel file Pisa: {', '.join(missing_pisa)}")
+            raise
 
-        missing_pisa = [col for col in self.PISA_REQUIRED_COLUMNS if col not in df_pisa_raw.columns]
-        if missing_pisa:
-            raise ValueError(f"Colonne mancanti nel file Pisa: {', '.join(missing_pisa)}")
-
-        df_nfs_all = df_nfs_raw[self.NFS_REQUIRED_COLUMNS].copy()
-        df_nfs_all.rename(columns=self.NFS_RENAME_MAP, inplace=True)
-        df_nfs_all["Data Fatture"] = pd.to_datetime(df_nfs_all["Data Fatture"], errors="coerce")
-        df_nfs_all["Datat reg."] = pd.to_datetime(df_nfs_all["Datat reg."], errors="coerce")
-        df_nfs_all["Imponibile"] = pd.to_numeric(df_nfs_all["Imponibile"], errors="coerce").fillna(0)
+        df_nfs_lookup = df_nfs_raw[["FAT_DATREG", "TMC_G8"]].copy()
+        df_nfs_lookup.rename(columns={"FAT_DATREG": "Datat reg.", "TMC_G8": "Identificativo SDI"}, inplace=True)
+        df_nfs_lookup["Datat reg."] = pd.to_datetime(df_nfs_lookup["Datat reg."], errors="coerce")
+        df_nfs_lookup["_SDI_KEY"] = self._normalize_sdi(df_nfs_lookup["Identificativo SDI"])
 
         df_nfs_deduped = df_nfs_raw.drop_duplicates(subset=["FAT_NUM", "C_NOME"]).copy()
         df_nfs = df_nfs_deduped[self.NFS_REQUIRED_COLUMNS].copy()
@@ -624,7 +630,6 @@ class CompareFTFileProcessor:
             errors="coerce",
         ).fillna(0)
 
-        df_nfs_all["_SDI_KEY"] = self._normalize_sdi(df_nfs_all["Identificativo SDI"])
         df_nfs["_SDI_KEY"] = self._normalize_sdi(df_nfs["Identificativo SDI"])
         df_pisa["_SDI_KEY"] = self._normalize_sdi(df_pisa["Identificativo SDI"])
 
@@ -737,7 +742,7 @@ class CompareFTFileProcessor:
         )
         self._create_pisa_solo_mese_nfs_sheet(
             wb=wb,
-            df_nfs_all=df_nfs_all,
+            df_nfs_lookup=df_nfs_lookup,
             df_nfs_jan=df_nfs_jan,
             df_pisa_jan=df_pisa_jan,
             nfs_elet_mask=nfs_elet_mask,
@@ -1145,7 +1150,7 @@ class CompareFTFileProcessor:
     def _create_pisa_solo_mese_nfs_sheet(
         self,
         wb: Workbook,
-        df_nfs_all: pd.DataFrame,
+        df_nfs_lookup: pd.DataFrame,
         df_nfs_jan: pd.DataFrame,
         df_pisa_jan: pd.DataFrame,
         nfs_elet_mask: pd.Series,
@@ -1188,13 +1193,14 @@ class CompareFTFileProcessor:
             .set_index("_SDI_KEY")
         )
 
-        df_nfs_all_non_empty = df_nfs_all[~self._is_empty_sdi(df_nfs_all["_SDI_KEY"])].copy()
+        df_nfs_lookup_non_empty = df_nfs_lookup[~self._is_empty_sdi(df_nfs_lookup["_SDI_KEY"])].copy()
 
         row_idx = 2
         for key in only_pisa_keys:
             pisa_row = pisa_first_by_key.loc[key]
-            nfs_matches = df_nfs_all_non_empty[df_nfs_all_non_empty["_SDI_KEY"].astype(str).str.strip() == key].copy()
-            nfs_dates = pd.to_datetime(nfs_matches["Datat reg."], errors="coerce").dropna()
+            nfs_matches = df_nfs_lookup_non_empty[df_nfs_lookup_non_empty["_SDI_KEY"].astype(str).str.strip() == key].copy()
+            nfs_dates = nfs_matches["Datat reg."]
+            nfs_dates = pd.to_datetime(nfs_dates, errors="coerce").dropna()
             months = sorted(set(nfs_dates.dt.to_period("M").astype(str)))
             first_reg = nfs_dates.min() if len(nfs_dates) else None
 

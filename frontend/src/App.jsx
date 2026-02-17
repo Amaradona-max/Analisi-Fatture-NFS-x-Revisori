@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertCircle, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import FileUpload from './components/FileUpload'
 import ProgressBar from './components/ProgressBar'
@@ -352,6 +352,10 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
 function App() {
   const [lastNfsFile, setLastNfsFile] = useState(null)
   const [lastPisaFile, setLastPisaFile] = useState(null)
+
+  useEffect(() => {
+    fileAPI.healthCheck().catch(() => {})
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
