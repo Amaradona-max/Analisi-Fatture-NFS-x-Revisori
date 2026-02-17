@@ -4,7 +4,7 @@ import pandas as pd
 from openpyxl import load_workbook
 import pytest
 
-from app.services.file_processor import NFSFTFileProcessor, PisaFTFileProcessor, CompareFTFileProcessor
+from app.services.file_processor import NFSFTFileProcessor, PisaFTFileProcessor, PisaRicevuteFTFileProcessor, CompareFTFileProcessor
 
 
 @pytest.fixture
@@ -106,6 +106,55 @@ def test_process_file_pisa_splits_by_sdi(tmp_path: Path):
     assert elettroniche_ws["A1"].value == "NUMERO TOTALE"
     assert elettroniche_ws["B1"].value == "IMPONIBILE"
     assert elettroniche_ws["A2"].value == 0
+
+
+def test_process_file_pisa_ricevute_splits_by_sdi(tmp_path: Path):
+    df = pd.DataFrame(
+        [
+            {
+                "Creditore": "Ragione A",
+                "Numero fattura": "F001",
+                "Data emissione": "2025-01-10",
+                "Data documento": "2025-01-10",
+                "Data pagamento": "",
+                "IVA": "22,00",
+                "Importo fattura": "122,00",
+                "Identificativo SDI": "",
+            },
+            {
+                "Creditore": "Ragione B",
+                "Numero fattura": "F002",
+                "Data emissione": "2025-01-11",
+                "Data documento": "2025-01-11",
+                "Data pagamento": "",
+                "IVA": "44,00",
+                "Importo fattura": "244,00",
+                "Identificativo SDI": "123",
+            },
+            {
+                "Creditore": "Ragione C",
+                "Numero fattura": "F003",
+                "Data emissione": "2025-01-12",
+                "Data documento": "2025-01-12",
+                "Data pagamento": "",
+                "IVA": "0",
+                "Importo fattura": "100",
+                "Identificativo SDI": None,
+            },
+        ]
+    )
+
+    processor = PisaRicevuteFTFileProcessor()
+    input_path = tmp_path / "input_pisa_ricevute.xlsx"
+    output_path = tmp_path / "output_pisa_ricevute.xlsx"
+    df.to_excel(input_path, index=False)
+
+    stats = processor.process_file(input_path, output_path)
+
+    assert output_path.exists()
+    assert stats["total_records"] == 3
+    assert stats["fase2_records"] == 2
+    assert stats["fase3_records"] == 1
 
 
 def test_compare_files_january_2025(tmp_path: Path):

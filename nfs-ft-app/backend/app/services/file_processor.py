@@ -565,6 +565,179 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
         ws.column_dimensions["B"].width = 20
 
 
+class PisaRicevuteFTFileProcessor(NFSFTFileProcessor):
+    PHASE = 1
+    INPUT_REQUIRED_COLUMNS = [
+        "Creditore",
+        "Numero fattura",
+        "Data emissione",
+        "Data documento",
+        "Data pagamento",
+        "IVA",
+        "Importo fattura",
+        "Identificativo SDI",
+    ]
+    OUTPUT_COLUMNS = [
+        "Ragione sociale",
+        "N.fatture",
+        "Data emissione",
+        "Data documento",
+        "Data pagamento",
+        "Ivam",
+        "Imponibile",
+        "Totale fatture",
+        "Identificativo SDI",
+    ]
+    OUTPUT_DATE_COLUMNS = ["Data emissione", "Data documento", "Data pagamento"]
+    OUTPUT_MONEY_COLUMNS = ["Ivam", "Imponibile", "Totale fatture"]
+    MAX_DETAIL_ROWS = 5000
+
+    def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
+        try:
+            logger.info("Caricamento file Pisa Ricevute: %s", input_path)
+            try:
+                df = pd.read_excel(input_path, usecols=self.INPUT_REQUIRED_COLUMNS, dtype=str)
+            except ValueError:
+                df_header = pd.read_excel(input_path, nrows=0)
+                missing_columns = [col for col in self.INPUT_REQUIRED_COLUMNS if col not in df_header.columns]
+                if missing_columns:
+                    raise ValueError(f"Colonne mancanti: {', '.join(missing_columns)}")
+                raise
+
+            totale_fattura = pd.to_numeric(
+                df["Importo fattura"].astype(str).str.replace(",", ".", regex=False),
+                errors="coerce",
+            ).fillna(0)
+            iva = pd.to_numeric(
+                df["IVA"].astype(str).str.replace(",", ".", regex=False),
+                errors="coerce",
+            ).fillna(0)
+            imponibile = totale_fattura - iva
+
+            df_finale = pd.DataFrame(
+                {
+                    "Ragione sociale": df["Creditore"],
+                    "N.fatture": df["Numero fattura"],
+                    "Data emissione": pd.to_datetime(df["Data emissione"], errors="coerce"),
+                    "Data documento": pd.to_datetime(df["Data documento"], errors="coerce"),
+                    "Data pagamento": pd.to_datetime(df["Data pagamento"], errors="coerce"),
+                    "Ivam": iva,
+                    "Imponibile": imponibile,
+                    "Totale fatture": totale_fattura,
+                    "Identificativo SDI": df["Identificativo SDI"],
+                }
+            )
+            df_finale = df_finale[self.OUTPUT_COLUMNS]
+
+            cartacee_df, elettroniche_df = self._split_by_sdi(df_finale, "Identificativo SDI")
+            self._create_excel_output(df_finale, cartacee_df, elettroniche_df, output_path, display_df=df_finale)
+            stats = {
+                "total_records": len(df_finale),
+                "fase2_records": len(cartacee_df),
+                "fase3_records": len(elettroniche_df),
+                "duplicates_removed": 0,
+                "protocols_fase2": {"Cartacee": len(cartacee_df)},
+                "protocols_fase3": {"Elettroniche": len(elettroniche_df)},
+            }
+            logger.info("File Pisa Ricevute elaborato con successo: %s", stats)
+            return stats
+        except Exception as exc:
+            logger.error("Errore elaborazione file Pisa Ricevute: %s", str(exc))
+            raise
+
+    def _create_excel_output(
+        self,
+        df: pd.DataFrame,
+        cartacee_df: pd.DataFrame,
+        elettroniche_df: pd.DataFrame,
+        output_path: Path,
+        display_df: Optional[pd.DataFrame] = None,
+    ) -> None:
+        wb = Workbook()
+
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
+        total_font = Font(bold=True)
+
+        dati_df = display_df if display_df is not None else df
+        self._add_dataframe_sheet(
+            wb,
+            "Dati",
+            dati_df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+            date_columns=self.OUTPUT_DATE_COLUMNS,
+            date_format="dd/mm/yyyy",
+            money_columns=self.OUTPUT_MONEY_COLUMNS,
+            auto_size=False,
+            use_active=True,
+        )
+
+        ws_cartacee = wb.create_sheet("Fatture Cartacee")
+        self._create_simple_summary_sheet(
+            ws_cartacee,
+            cartacee_df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+        )
+
+        ws_elettroniche = wb.create_sheet("Fatture Elettroniche")
+        self._create_simple_summary_sheet(
+            ws_elettroniche,
+            elettroniche_df,
+            header_fill,
+            header_font,
+            total_fill,
+            total_font,
+        )
+
+        wb.save(output_path)
+
+    def _split_by_sdi(self, df: pd.DataFrame, sdi_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+        sdi_series = df[sdi_column]
+        normalized = sdi_series.astype(str).str.strip()
+        normalized_lower = normalized.str.lower()
+        zero_mask = normalized_lower.str.fullmatch(r"0+(\.0+)?").fillna(False)
+        empty_mask = normalized_lower.isin(["", "nan", "none", "null"]) | zero_mask
+        cartacee_df = df[empty_mask].copy()
+        elettroniche_df = df[~empty_mask].copy()
+        return cartacee_df, elettroniche_df
+
+    def _create_simple_summary_sheet(
+        self,
+        ws,
+        df: pd.DataFrame,
+        header_fill: PatternFill,
+        header_font: Font,
+        total_fill: PatternFill,
+        total_font: Font,
+    ) -> None:
+        ws["A1"] = "NUMERO TOTALE"
+        ws["B1"] = "TOTALE FATTURE"
+
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        totale_fatture = pd.to_numeric(df["Totale fatture"], errors="coerce").sum()
+        ws["A2"] = len(df)
+        ws["B2"] = totale_fatture
+        ws["B2"].number_format = "#,##0.00"
+
+        for cell in ws[2]:
+            cell.fill = total_fill
+            cell.font = total_font
+
+        ws.column_dimensions["A"].width = 20
+        ws.column_dimensions["B"].width = 20
+
+
 class CompareFTFileProcessor(NFSFTFileProcessor):
     SELECTED_LETTERS = PisaFTFileProcessor.SELECTED_LETTERS
     RENAME_MAP = PisaFTFileProcessor.RENAME_MAP

@@ -521,8 +521,7 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
         normalized = sdi_series.astype(str).str.strip()
         normalized_lower = normalized.str.lower()
         zero_mask = normalized_lower.str.fullmatch(r"0+(\.0+)?").fillna(False)
-        short_mask = normalized.str.len().fillna(0) <= 3
-        empty_mask = normalized_lower.isin(["", "nan", "none", "null"]) | zero_mask | short_mask
+        empty_mask = normalized_lower.isin(["", "nan", "none", "null"]) | zero_mask
         cartacee_df = df[empty_mask].copy()
         elettroniche_df = df[~empty_mask].copy()
         return cartacee_df, elettroniche_df

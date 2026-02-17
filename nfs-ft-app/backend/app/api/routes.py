@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from app.core.config import settings
-from app.services.file_processor import NFSFTFileProcessor, PisaFTFileProcessor, CompareFTFileProcessor
+from app.services.file_processor import NFSFTFileProcessor, PisaFTFileProcessor, PisaRicevuteFTFileProcessor, CompareFTFileProcessor
 
 
 router = APIRouter()
@@ -89,7 +89,7 @@ async def process_file_pisa(file: UploadFile = File(...)):
                 detail=f"File troppo grande. Dimensione massima: {settings.MAX_FILE_SIZE / 1024 / 1024:.0f}MB",
             )
 
-        processor = PisaFTFileProcessor()
+        processor = PisaRicevuteFTFileProcessor()
         stats = processor.process_file(upload_path, output_path)
 
         upload_path.unlink()
@@ -105,7 +105,7 @@ async def process_file_pisa(file: UploadFile = File(...)):
             upload_path.unlink()
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        logger.error("Errore elaborazione Pisa Pagato: %s", str(exc))
+        logger.error("Errore elaborazione Pisa Ricevute: %s", str(exc))
         if upload_path.exists():
             upload_path.unlink()
         if output_path.exists():
