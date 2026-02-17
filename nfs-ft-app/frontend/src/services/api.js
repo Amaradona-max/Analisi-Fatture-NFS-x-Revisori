@@ -20,6 +20,24 @@ const api = axios.create({
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+function getErrorMessage(error, fallbackMessage) {
+  const detail = error?.response?.data?.detail
+  if (!detail) return fallbackMessage
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const msg = detail
+      .map((d) => (typeof d?.msg === 'string' ? d.msg : typeof d === 'string' ? d : null))
+      .filter(Boolean)
+      .join(' | ')
+    return msg || fallbackMessage
+  }
+  try {
+    return JSON.stringify(detail)
+  } catch {
+    return fallbackMessage
+  }
+}
+
 async function pollTask(taskId, onProgress) {
   let p = 0
   while (true) {
@@ -57,9 +75,7 @@ export const fileAPI = {
       }
       return data
     } catch (error) {
-      throw new Error(
-        error.response?.data?.detail || 'Errore durante il caricamento del file'
-      )
+      throw new Error(getErrorMessage(error, 'Errore durante il caricamento del file'))
     }
   },
   processFilePisa: async (file, onProgress) => {
@@ -80,15 +96,15 @@ export const fileAPI = {
       }
       return data
     } catch (error) {
-      throw new Error(
-        error.response?.data?.detail || 'Errore durante il caricamento del file'
-      )
+      throw new Error(getErrorMessage(error, 'Errore durante il caricamento del file'))
     }
   },
   processCompare: async (fileNfs, filePisa, onProgress) => {
     const formData = new FormData()
     formData.append('file_nfs', fileNfs)
     formData.append('file_pisa', filePisa)
+    formData.append('nfs_file', fileNfs)
+    formData.append('pisa_file', filePisa)
 
     try {
       const response = await api.post('/api/process-compare', formData, {
@@ -104,9 +120,7 @@ export const fileAPI = {
       }
       return data
     } catch (error) {
-      throw new Error(
-        error.response?.data?.detail || 'Errore durante il caricamento del file'
-      )
+      throw new Error(getErrorMessage(error, 'Errore durante il confronto dei file'))
     }
   },
 
@@ -138,9 +152,7 @@ export const fileAPI = {
       )
       return response.data
     } catch (error) {
-      throw new Error(
-        error.response?.data?.detail || 'Errore durante la chiusura della giornata'
-      )
+      throw new Error(getErrorMessage(error, 'Errore durante la chiusura della giornata'))
     }
   },
 }
