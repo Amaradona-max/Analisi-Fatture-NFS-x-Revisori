@@ -5,6 +5,9 @@ import ProgressBar from './components/ProgressBar'
 import Summary from './components/Summary'
 import { fileAPI } from './services/api'
 
+const formatCurrency = (value) =>
+  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value ?? 0)
+
 const FileProcessingSection = ({
   title,
   description,

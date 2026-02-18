@@ -1019,7 +1019,7 @@ class CompareFTFileProcessor:
         header_fill: PatternFill,
         header_font: Font,
     ) -> None:
-        ws = wb.create_sheet("Fatture da Verificare")
+        ws = wb.create_sheet("Elenco fatture da verificare")
 
         headers = [
             "Identificativo SDI",

@@ -268,9 +268,9 @@ def test_compare_files_january_2025(tmp_path: Path):
 
     wb = load_workbook(output_path, data_only=True)
     assert "Confronto" in wb.sheetnames
-    assert "Fatture da Verificare" in wb.sheetnames
+    assert "Elenco fatture da verificare" in wb.sheetnames
     assert "Differenze Elettroniche SDI" in wb.sheetnames
     assert "Differenze SDI in Comune" in wb.sheetnames
     assert "Pisa Solo - Mese NFS" in wb.sheetnames
-    diff_ws = wb["Fatture da Verificare"]
+    diff_ws = wb["Elenco fatture da verificare"]
     assert diff_ws.max_row >= 3
