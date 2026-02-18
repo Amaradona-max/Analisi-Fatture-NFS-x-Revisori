@@ -288,50 +288,47 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
 
       {result && !processing && (
         <div className="space-y-6">
-          {/* PROTEZIONE: Verifica che summary esista prima di renderizzare */}
           {!result.summary ? (
             <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800">
-                ⚠️ Errore: dati di confronto non disponibili. Riprova il caricamento.
-              </p>
+              <p className="text-yellow-800">⚠️ Errore: dati di confronto non disponibili. Riprova il caricamento.</p>
             </div>
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 space-y-4">
-                  <h3 className="font-semibold text-gray-700">NFS (Gennaio 2025)</h3>
+                <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                  <h3 className="font-semibold text-gray-700 mb-3">FT NFS Pagato - Gennaio 2025</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>
                       <span className="font-medium">
-                        {(result.summary.nfs?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {(result.summary.nfs?.cartacee?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {(result.summary.nfs?.cartacee?.count ?? 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency((result.summary.nfs?.cartacee?.amount ?? result.summary.nfs?.cartacee?.imponibile) ?? 0)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Elettroniche</span>
                       <span className="font-medium">
-                        {(result.summary.nfs?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {(result.summary.nfs?.elettroniche?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {(result.summary.nfs?.elettroniche?.count ?? 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency((result.summary.nfs?.elettroniche?.amount ?? result.summary.nfs?.elettroniche?.imponibile) ?? 0)}
                       </span>
                     </div>
                   </div>
                 </div>
-                <div className="bg-purple-50 p-6 rounded-lg border border-purple-200 space-y-4">
-                  <h3 className="font-semibold text-gray-700">Pisa (Gennaio 2025)</h3>
+                <div className="bg-purple-50 p-6 rounded-lg border border-purple-200">
+                  <h3 className="font-semibold text-gray-700 mb-3">FT Pisa Pagato - Gennaio 2025</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>
                       <span className="font-medium">
-                        {(result.summary.pisa?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {(result.summary.pisa?.cartacee?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {(result.summary.pisa?.cartacee?.count ?? 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency((result.summary.pisa?.cartacee?.amount ?? result.summary.pisa?.cartacee?.imponibile) ?? 0)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Elettroniche</span>
                       <span className="font-medium">
-                        {(result.summary.pisa?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {(result.summary.pisa?.elettroniche?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {(result.summary.pisa?.elettroniche?.count ?? 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency((result.summary.pisa?.elettroniche?.amount ?? result.summary.pisa?.elettroniche?.imponibile) ?? 0)}
                       </span>
                     </div>
                   </div>

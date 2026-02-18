@@ -210,9 +210,9 @@ def test_compare_files_january_2025(tmp_path: Path):
     nfs_df = pd.DataFrame(
         {
             "C_NOME": ["A", "B"],
-            "FAT_DATDOC": ["2025-01-05", "2025-02-05"],
+            "FAT_DATDOC": ["2025-01-05", "2025-01-15"],
             "FAT_NDOC": ["F001", "F002"],
-            "FAT_DATREG": ["2025-01-10", "2025-02-10"],
+            "FAT_DATREG": ["2025-01-10", "2025-01-20"],
             "FAT_PROT": ["P", "EP"],
             "FAT_NUM": [1, 2],
             "IMPONIBILE": [100.0, 200.0],
@@ -267,6 +267,10 @@ def test_compare_files_january_2025(tmp_path: Path):
     assert summary["pisa"]["elettroniche"]["count"] == 1
 
     wb = load_workbook(output_path, data_only=True)
-    assert "Diffrenze da Verificare" in wb.sheetnames
-    diff_ws = wb["Diffrenze da Verificare"]
-    assert diff_ws.max_row == 2
+    assert "Confronto" in wb.sheetnames
+    assert "Fatture da Verificare" in wb.sheetnames
+    assert "Differenze Elettroniche SDI" in wb.sheetnames
+    assert "Differenze SDI in Comune" in wb.sheetnames
+    assert "Pisa Solo - Mese NFS" in wb.sheetnames
+    diff_ws = wb["Fatture da Verificare"]
+    assert diff_ws.max_row >= 3
