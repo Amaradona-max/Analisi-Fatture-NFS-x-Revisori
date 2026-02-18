@@ -31,12 +31,11 @@ const FileProcessingSection = ({
     try {
       const response = await processFile(selectedFile, (uploadProgress) => {
         setProgress(uploadProgress)
-        if (uploadProgress >= 40) {
+        if (uploadProgress === 100) {
           setStatus('Elaborazione in corso...')
         }
       })
 
-      setProgress(100)
       setStatus('Completato!')
       setResult(response)
       setProcessing(false)
@@ -167,11 +166,10 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
     try {
       const response = await fileAPI.processCompare(nfsFile, pisaFile, (uploadProgress) => {
         setProgress(uploadProgress)
-        if (uploadProgress >= 40) {
+        if (uploadProgress === 100) {
           setStatus('Elaborazione in corso...')
         }
       })
-      setProgress(100)
       setStatus('Completato!')
       setResult(response)
     } catch (err) {
@@ -290,53 +288,64 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
 
       {result && !processing && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 space-y-4">
-              <h3 className="font-semibold text-gray-700">NFS (Gennaio 2025)</h3>
-              <div className="space-y-2 text-sm text-gray-700">
-                <div className="flex justify-between">
-                  <span>Cartacee</span>
-                  <span className="font-medium">
-                    {result.summary.nfs.cartacee.count.toLocaleString('it-IT')} ·{' '}
-                    {result.summary.nfs.cartacee.amount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+          {/* PROTEZIONE: Verifica che summary esista prima di renderizzare */}
+          {!result.summary ? (
+            <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-yellow-800">
+                ⚠️ Errore: dati di confronto non disponibili. Riprova il caricamento.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 space-y-4">
+                  <h3 className="font-semibold text-gray-700">NFS (Gennaio 2025)</h3>
+                  <div className="space-y-2 text-sm text-gray-700">
+                    <div className="flex justify-between">
+                      <span>Cartacee</span>
+                      <span className="font-medium">
+                        {(result.summary.nfs?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {(result.summary.nfs?.cartacee?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Elettroniche</span>
+                      <span className="font-medium">
+                        {(result.summary.nfs?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {(result.summary.nfs?.elettroniche?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span>Elettroniche</span>
-                  <span className="font-medium">
-                    {result.summary.nfs.elettroniche.count.toLocaleString('it-IT')} ·{' '}
-                    {result.summary.nfs.elettroniche.amount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                <div className="bg-purple-50 p-6 rounded-lg border border-purple-200 space-y-4">
+                  <h3 className="font-semibold text-gray-700">Pisa (Gennaio 2025)</h3>
+                  <div className="space-y-2 text-sm text-gray-700">
+                    <div className="flex justify-between">
+                      <span>Cartacee</span>
+                      <span className="font-medium">
+                        {(result.summary.pisa?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {(result.summary.pisa?.cartacee?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Elettroniche</span>
+                      <span className="font-medium">
+                        {(result.summary.pisa?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {(result.summary.pisa?.elettroniche?.amount || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="bg-purple-50 p-6 rounded-lg border border-purple-200 space-y-4">
-              <h3 className="font-semibold text-gray-700">Pisa (Gennaio 2025)</h3>
-              <div className="space-y-2 text-sm text-gray-700">
-                <div className="flex justify-between">
-                  <span>Cartacee</span>
-                  <span className="font-medium">
-                    {result.summary.pisa.cartacee.count.toLocaleString('it-IT')} ·{' '}
-                    {result.summary.pisa.cartacee.amount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Elettroniche</span>
-                  <span className="font-medium">
-                    {result.summary.pisa.elettroniche.count.toLocaleString('it-IT')} ·{' '}
-                    {result.summary.pisa.elettroniche.amount.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={handleDownload}
-            disabled={downloading}
-            className="w-full md:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 mx-auto"
-          >
-            {downloading ? 'Download in corso...' : 'Scarica file confronto'}
-          </button>
+              <button
+                onClick={handleDownload}
+                disabled={downloading}
+                className="w-full md:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 mx-auto"
+              >
+                {downloading ? 'Download in corso...' : 'Scarica file confronto'}
+              </button>
+            </>
+          )}
           <div className="pt-6 border-t border-gray-200">
             <button
               onClick={handleReset}
@@ -357,10 +366,6 @@ function App() {
 
   useEffect(() => {
     fileAPI.healthCheck().catch(() => {})
-    const interval = setInterval(() => {
-      fileAPI.healthCheck().catch(() => {})
-    }, 10 * 60 * 1000)
-    return () => clearInterval(interval)
   }, [])
 
   return (
