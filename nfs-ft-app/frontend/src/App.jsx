@@ -1,12 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AlertCircle, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import FileUpload from './components/FileUpload'
 import ProgressBar from './components/ProgressBar'
 import Summary from './components/Summary'
 import { fileAPI } from './services/api'
-
-const formatCurrency = (value) =>
-  new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value ?? 0)
 
 const FileProcessingSection = ({
   title,
@@ -122,7 +119,12 @@ const FileProcessingSection = ({
 
       {result && !processing && (
         <div className="space-y-6">
-          <Summary summary={result.summary} onDownload={handleDownload} downloading={downloading} title={title} />
+          <Summary
+            summary={result.summary}
+            onDownload={handleDownload}
+            downloading={downloading}
+            title={title}
+          />
           <div className="pt-6 border-t border-gray-200">
             <button
               onClick={handleReset}
@@ -146,6 +148,9 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const [downloading, setDownloading] = useState(false)
+
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(value || 0)
 
   const handleUseLastFiles = () => {
     if (!lastNfsFile || !lastPisaFile) return
@@ -175,16 +180,15 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
       })
       setStatus('Completato!')
       setResult(response)
+      setProcessing(false)
     } catch (err) {
       setError(err.message)
-    } finally {
       setProcessing(false)
     }
   }
 
   const handleDownload = async () => {
     if (!result?.file_id) return
-
     setDownloading(true)
     try {
       const blob = await fileAPI.downloadFile(result.file_id)
@@ -192,7 +196,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
       const link = document.createElement('a')
       link.href = url
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
-      link.download = `Confronto_NFS_FT_${timestamp}.xlsx`
+      link.download = `Confronto_Gennaio_2025_${timestamp}.xlsx`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -219,9 +223,11 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <FileSpreadsheet className="w-8 h-8 text-blue-600" />
-          <h2 className="text-2xl font-bold text-gray-800">Confronto</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Confronto Gennaio 2025</h2>
         </div>
-        <p className="text-gray-600">Carica due file e genera un file Excel di confronto.</p>
+        <p className="text-gray-600">
+          Confronto FT NFS Pagato (gennaio 2025) vs FT Pisa Pagato (solo gennaio 2025).
+        </p>
       </div>
 
       {error && (
@@ -253,7 +259,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             </div>
           )}
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">FT NFS</p>
+            <p className="text-sm font-medium text-gray-700">FT NFS Pagato</p>
             <FileUpload onFileSelect={setNfsFile} disabled={processing} />
             {nfsFile && (
               <p className="text-sm text-gray-600">
@@ -262,7 +268,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             )}
           </div>
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">FT Pisa</p>
+            <p className="text-sm font-medium text-gray-700">FT Pisa Pagato</p>
             <FileUpload onFileSelect={setPisaFile} disabled={processing} />
             {pisaFile && (
               <p className="text-sm text-gray-600">
@@ -274,7 +280,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             onClick={handleCompare}
             className="w-full md:w-auto px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors duration-200 mx-auto"
           >
-            Confronta e genera file
+            Confronta e genera riepilogo
           </button>
         </div>
       )}
@@ -291,9 +297,12 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
 
       {result && !processing && (
         <div className="space-y-6">
+          {/* PROTEZIONE: Verifica che summary esista prima di renderizzare */}
           {!result.summary ? (
             <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-yellow-800">⚠️ Errore: dati di confronto non disponibili. Riprova il caricamento.</p>
+              <p className="text-yellow-800">
+                ⚠️ Errore: dati di confronto non disponibili. Riprova il caricamento.
+              </p>
             </div>
           ) : (
             <>
@@ -304,15 +313,15 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
                     <div className="flex justify-between">
                       <span>Cartacee</span>
                       <span className="font-medium">
-                        {(result.summary.nfs?.cartacee?.count ?? 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency((result.summary.nfs?.cartacee?.amount ?? result.summary.nfs?.cartacee?.imponibile) ?? 0)}
+                        {(result.summary.nfs?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency(result.summary.nfs?.cartacee?.imponibile || 0)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Elettroniche</span>
                       <span className="font-medium">
-                        {(result.summary.nfs?.elettroniche?.count ?? 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency((result.summary.nfs?.elettroniche?.amount ?? result.summary.nfs?.elettroniche?.imponibile) ?? 0)}
+                        {(result.summary.nfs?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency(result.summary.nfs?.elettroniche?.imponibile || 0)}
                       </span>
                     </div>
                   </div>
@@ -323,15 +332,15 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
                     <div className="flex justify-between">
                       <span>Cartacee</span>
                       <span className="font-medium">
-                        {(result.summary.pisa?.cartacee?.count ?? 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency((result.summary.pisa?.cartacee?.amount ?? result.summary.pisa?.cartacee?.imponibile) ?? 0)}
+                        {(result.summary.pisa?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency(result.summary.pisa?.cartacee?.imponibile || 0)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Elettroniche</span>
                       <span className="font-medium">
-                        {(result.summary.pisa?.elettroniche?.count ?? 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency((result.summary.pisa?.elettroniche?.amount ?? result.summary.pisa?.elettroniche?.imponibile) ?? 0)}
+                        {(result.summary.pisa?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
+                        {formatCurrency(result.summary.pisa?.elettroniche?.imponibile || 0)}
                       </span>
                     </div>
                   </div>
@@ -363,10 +372,21 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
 function App() {
   const [lastNfsFile, setLastNfsFile] = useState(null)
   const [lastPisaFile, setLastPisaFile] = useState(null)
+  const [closingDay, setClosingDay] = useState(false)
+  const [closingMessage, setClosingMessage] = useState('')
 
-  useEffect(() => {
-    fileAPI.healthCheck().catch(() => {})
-  }, [])
+  const handleCloseDay = async () => {
+    setClosingDay(true)
+    setClosingMessage('')
+    try {
+      const response = await fileAPI.closeDay('Saluti fine giornata')
+      setClosingMessage(`Riepilogo aggiornato (${response.timestamp})`)
+    } catch (error) {
+      setClosingMessage(error.message)
+    } finally {
+      setClosingDay(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -374,7 +394,7 @@ function App() {
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <FileSpreadsheet className="w-12 h-12 text-blue-600" />
-            <h1 className="text-4xl font-bold text-gray-800">1. Query Fatture NFS</h1>
+            <h1 className="text-4xl font-bold text-gray-800">2. Query Fatture NFS</h1>
           </div>
           <p className="text-gray-600">
             Elaborazione automatica file Excel con filtraggio protocolli e note riepilogative
@@ -383,24 +403,34 @@ function App() {
 
         <div className="grid grid-cols-1 gap-8">
           <FileProcessingSection
-            title="FT NFS Ricevute"
-            description="Analisi e riepilogo per il file NFS Ricevute."
-            downloadPrefix="FT_NFS_Ricevute"
+            title="FT NFS Pagato"
+            description="Analisi e riepilogo per il file NFS Pagato."
+            downloadPrefix="FT_NFS_Pagato"
             processFile={fileAPI.processFile}
             onFileProcessed={setLastNfsFile}
           />
           <FileProcessingSection
-            title="FT Pisa Ricevute"
-            description="Analisi e riepilogo per il file Pisa Ricevute."
-            downloadPrefix="FT_Pisa_Ricevute"
+            title="FT Pisa Pagato"
+            description="Analisi e riepilogo per il file Pisa Pagato."
+            downloadPrefix="FT_Pisa_Pagato"
             processFile={fileAPI.processFilePisa}
             onFileProcessed={setLastPisaFile}
           />
           <CompareProcessingSection lastNfsFile={lastNfsFile} lastPisaFile={lastPisaFile} />
         </div>
 
-        <div className="mt-8 text-center text-sm text-gray-600">
+        <div className="mt-8 text-center text-sm text-gray-600 space-y-3">
           <p>Versione 1.0.0 | Supporto: .xlsx | Max 50MB</p>
+          <div className="flex flex-col items-center gap-2">
+            <button
+              onClick={handleCloseDay}
+              disabled={closingDay}
+              className="px-5 py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:text-gray-400 disabled:border-gray-300 font-semibold rounded-lg transition-colors duration-200"
+            >
+              {closingDay ? 'Chiusura in corso...' : 'Saluti fine giornata'}
+            </button>
+            {closingMessage ? <p className="text-sm text-gray-600">{closingMessage}</p> : null}
+          </div>
         </div>
       </div>
     </div>
