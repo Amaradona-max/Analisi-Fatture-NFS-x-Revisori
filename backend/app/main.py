@@ -14,8 +14,8 @@ logging.basicConfig(
 
 
 app = FastAPI(
-    title="1. Query Fatture NFS API",
-    description="API per elaborazione file Excel 1. Query Fatture NFS",
+    title="1. Query Fatture NFS Pagato API",
+    description="API per elaborazione file Excel 1. Query Fatture NFS Pagato",
     version="1.0.0",
 )
 
@@ -33,7 +33,7 @@ app.include_router(router, prefix="/api", tags=["files"])
 @app.get("/")
 async def root():
     return {
-        "message": "1. Query Fatture NFS API",
+        "message": "1. Query Fatture NFS Pagato API",
         "version": "1.0.0",
         "docs": "/docs",
     }

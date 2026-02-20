@@ -314,14 +314,14 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
                       <span>Cartacee</span>
                       <span className="font-medium">
                         {(result.summary.nfs?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency(result.summary.nfs?.cartacee?.imponibile || 0)}
+                        {formatCurrency((result.summary.nfs?.cartacee?.amount ?? result.summary.nfs?.cartacee?.imponibile) || 0)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Elettroniche</span>
                       <span className="font-medium">
                         {(result.summary.nfs?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency(result.summary.nfs?.elettroniche?.imponibile || 0)}
+                        {formatCurrency((result.summary.nfs?.elettroniche?.amount ?? result.summary.nfs?.elettroniche?.imponibile) || 0)}
                       </span>
                     </div>
                   </div>
@@ -333,14 +333,14 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
                       <span>Cartacee</span>
                       <span className="font-medium">
                         {(result.summary.pisa?.cartacee?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency(result.summary.pisa?.cartacee?.imponibile || 0)}
+                        {formatCurrency((result.summary.pisa?.cartacee?.amount ?? result.summary.pisa?.cartacee?.imponibile) || 0)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Elettroniche</span>
                       <span className="font-medium">
                         {(result.summary.pisa?.elettroniche?.count || 0).toLocaleString('it-IT')} ·{' '}
-                        {formatCurrency(result.summary.pisa?.elettroniche?.imponibile || 0)}
+                        {formatCurrency((result.summary.pisa?.elettroniche?.amount ?? result.summary.pisa?.elettroniche?.imponibile) || 0)}
                       </span>
                     </div>
                   </div>
@@ -394,7 +394,7 @@ function App() {
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <FileSpreadsheet className="w-12 h-12 text-blue-600" />
-            <h1 className="text-4xl font-bold text-gray-800">2. Query Fatture NFS</h1>
+            <h1 className="text-4xl font-bold text-gray-800">1. Query Fatture NFS Pagato</h1>
           </div>
           <p className="text-gray-600">
             Elaborazione automatica file Excel con filtraggio protocolli e note riepilogative
