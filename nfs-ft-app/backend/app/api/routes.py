@@ -18,6 +18,11 @@ executor = ThreadPoolExecutor(max_workers=4)
 tasks: dict[str, dict] = {}
 
 
+def _ensure_dirs() -> None:
+    settings.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    settings.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def _run_single_file_task(task_id: str, processor, upload_path: Path, output_path: Path) -> None:
     tasks[task_id]["status"] = "processing"
     try:
@@ -69,6 +74,7 @@ async def process_file(file: UploadFile = File(...)):
     output_path = settings.OUTPUT_DIR / f"{task_id}_output.xlsx"
 
     try:
+        _ensure_dirs()
         with upload_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
@@ -114,6 +120,7 @@ async def process_file_pisa(file: UploadFile = File(...)):
     output_path = settings.OUTPUT_DIR / f"{task_id}_output.xlsx"
 
     try:
+        _ensure_dirs()
         with upload_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
@@ -161,6 +168,7 @@ async def process_compare(file_nfs: UploadFile = File(...), file_pisa: UploadFil
     output_path = settings.OUTPUT_DIR / f"{task_id}_output.xlsx"
 
     try:
+        _ensure_dirs()
         with upload_path_nfs.open("wb") as buffer:
             shutil.copyfileobj(file_nfs.file, buffer)
         with upload_path_pisa.open("wb") as buffer:

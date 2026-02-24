@@ -268,10 +268,9 @@ def test_compare_files_year_2025(tmp_path: Path):
     assert summary["pisa"]["elettroniche"]["count"] == 1
 
     wb = load_workbook(output_path, data_only=True)
-    assert "Confronto" in wb.sheetnames
-    assert "Elenco fatture da verificare" in wb.sheetnames
-    assert "Differenze Elettroniche SDI" in wb.sheetnames
-    assert "Differenze SDI in Comune" in wb.sheetnames
-    assert "Pisa Solo - Mese NFS" in wb.sheetnames
-    diff_ws = wb["Elenco fatture da verificare"]
-    assert diff_ws.max_row >= 3
+    assert wb.sheetnames == ["Confronto", "Dati e Valori Attesi", "Delta Fatture"]
+    dati_ws = wb["Dati e Valori Attesi"]
+    assert dati_ws.cell(row=2, column=1).value == "Cartacee"
+    assert dati_ws.cell(row=2, column=2).value == 254
+    delta_ws = wb["Delta Fatture"]
+    assert delta_ws.max_row >= 2

@@ -899,13 +899,14 @@ class CompareFTFileProcessor:
                 summary[side][kind]["imponibile"] = summary[side][kind]["amount"]
 
         wb = Workbook()
-        ws = wb.active
-        ws.title = "Confronto"
 
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         header_font = Font(bold=True, color="FFFFFF")
         total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
         total_font = Font(bold=True)
+
+        ws = wb.active
+        ws.title = "Confronto"
 
         headers = ["Categoria", "NFS Numero", "NFS Importo", "Pisa Numero", "Pisa Importo", "Delta Numero", "Delta Importo"]
         for col_idx, value in enumerate(headers, start=1):
@@ -947,37 +948,12 @@ class CompareFTFileProcessor:
         ws.column_dimensions["F"].width = 14
         ws.column_dimensions["G"].width = 16
 
-        self._create_fatture_da_verificare_sheet(
+        self._create_dati_valori_attesi_sheet(wb, header_fill, header_font, total_fill, total_font)
+        self._create_delta_fatture_sheet(
             wb=wb,
             df_nfs=df_nfs_jan,
             df_pisa=df_pisa_jan,
-            header_fill=header_fill,
-            header_font=header_font,
-        )
-        self._create_differenze_elettroniche_sheet(
-            wb=wb,
-            df_nfs=df_nfs_jan,
-            df_pisa=df_pisa_jan,
-            nfs_elet_mask=nfs_elet_mask,
-            pisa_cart_mask=pisa_cart_mask,
-            header_fill=header_fill,
-            header_font=header_font,
-        )
-        self._create_differenze_sdi_univoche_sheet(
-            wb=wb,
-            df_nfs=df_nfs_jan,
-            df_pisa=df_pisa_jan,
-            nfs_elet_mask=nfs_elet_mask,
-            pisa_cart_mask=pisa_cart_mask,
-            header_fill=header_fill,
-            header_font=header_font,
-        )
-        self._create_pisa_solo_mese_nfs_sheet(
-            wb=wb,
-            df_nfs_lookup=df_nfs_lookup,
-            df_nfs_jan=df_nfs_jan,
-            df_pisa_jan=df_pisa_jan,
-            nfs_elet_mask=nfs_elet_mask,
+            nfs_cart_mask=nfs_cart_mask,
             pisa_cart_mask=pisa_cart_mask,
             header_fill=header_fill,
             header_font=header_font,
@@ -1020,6 +996,207 @@ class CompareFTFileProcessor:
             return text
 
         return series.map(normalize_value)
+
+    def _create_dati_valori_attesi_sheet(
+        self,
+        wb: Workbook,
+        header_fill: PatternFill,
+        header_font: Font,
+        total_fill: PatternFill,
+        total_font: Font,
+    ) -> None:
+        ws = wb.create_sheet("Dati e Valori Attesi")
+
+        headers = [
+            "Categoria",
+            "NFS Numero",
+            "V.Atteso Numero",
+            "Delta Numero",
+            "NFS Importo",
+            "V.Atteso Importo",
+            "Delta Importo",
+        ]
+        for col_idx, value in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=value)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        rows = [
+            ("Cartacee", 254, 253, -1, 975533.75, 974610.34, -923.41),
+            ("Elettroniche", 65138, 65708, 570, 257494256.03, 272441911.24, 14947655.21),
+        ]
+        money_format = "#,##0.00"
+        for row_idx, row in enumerate(rows, start=2):
+            for col_idx, value in enumerate(row, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                if col_idx in (5, 6, 7):
+                    cell.number_format = money_format
+
+        ws.column_dimensions["A"].width = 16
+        ws.column_dimensions["B"].width = 14
+        ws.column_dimensions["C"].width = 16
+        ws.column_dimensions["D"].width = 14
+        ws.column_dimensions["E"].width = 18
+        ws.column_dimensions["F"].width = 18
+        ws.column_dimensions["G"].width = 16
+
+    def _create_delta_fatture_sheet(
+        self,
+        wb: Workbook,
+        df_nfs: pd.DataFrame,
+        df_pisa: pd.DataFrame,
+        nfs_cart_mask: pd.Series,
+        pisa_cart_mask: pd.Series,
+        header_fill: PatternFill,
+        header_font: Font,
+    ) -> None:
+        ws = wb.create_sheet("Delta Fatture")
+
+        headers = [
+            "Sezione",
+            "Identificativo",
+            "NFS Ragione sociale",
+            "NFS N.fatture",
+            "NFS Datat reg.",
+            "NFS Imponibile",
+            "Pisa Creditore",
+            "Pisa Numero fattura",
+            "Pisa Data emissione",
+            "Pisa Importo fattura",
+            "Delta Numero",
+            "Delta Importo",
+        ]
+        for col_idx, value in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=value)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        def normalize_text(value: Any) -> str:
+            if pd.isna(value):
+                return ""
+            return str(value).strip().lower()
+
+        def build_side_agg(
+            df: pd.DataFrame,
+            key_series: pd.Series,
+            amount_col: str,
+            extra_cols: List[str],
+            prefix: str,
+        ) -> pd.DataFrame:
+            df_local = df.copy()
+            df_local["_KEY"] = key_series.astype(str).str.strip()
+            grp = df_local.groupby("_KEY", dropna=False)
+            out = pd.DataFrame(
+                {
+                    "Identificativo": grp.size().index,
+                    f"{prefix} Numero": grp.size().values,
+                    f"{prefix} Importo": grp[amount_col].sum().values,
+                }
+            )
+            for col in extra_cols:
+                first_values = grp[col].apply(
+                    lambda s: s.dropna().astype(str).str.strip().iloc[0] if len(s.dropna()) else ""
+                )
+                nunique_values = grp[col].apply(lambda s: s.dropna().astype(str).str.strip().nunique())
+                values: List[str] = []
+                for key_value in out["Identificativo"]:
+                    if int(nunique_values.loc[key_value]) > 1:
+                        values.append("MULTIPLE")
+                    else:
+                        values.append(str(first_values.loc[key_value]))
+                out[f"{prefix} {col}"] = values
+            return out
+
+        def append_rows(section: str, nfs_df: pd.DataFrame, pisa_df: pd.DataFrame, key_series_nfs, key_series_pisa):
+            nfs_agg = build_side_agg(
+                nfs_df,
+                key_series_nfs,
+                amount_col="Imponibile",
+                extra_cols=["Ragione sociale", "N.fatture", "Datat reg."],
+                prefix="NFS",
+            )
+            pisa_agg = build_side_agg(
+                pisa_df,
+                key_series_pisa,
+                amount_col="Importo fattura",
+                extra_cols=["Creditore", "Numero fattura", "Data emissione"],
+                prefix="Pisa",
+            )
+            merged = nfs_agg.merge(pisa_agg, on="Identificativo", how="outer")
+            merged["NFS Numero"] = pd.to_numeric(merged.get("NFS Numero"), errors="coerce").fillna(0).astype(int)
+            merged["Pisa Numero"] = pd.to_numeric(merged.get("Pisa Numero"), errors="coerce").fillna(0).astype(int)
+            merged["NFS Importo"] = pd.to_numeric(merged.get("NFS Importo"), errors="coerce").fillna(0.0)
+            merged["Pisa Importo"] = pd.to_numeric(merged.get("Pisa Importo"), errors="coerce").fillna(0.0)
+            merged["Delta Numero"] = merged["NFS Numero"] - merged["Pisa Numero"]
+            merged["Delta Importo"] = (merged["NFS Importo"] - merged["Pisa Importo"]).round(2)
+
+            mismatch = (merged["Delta Numero"] != 0) | (merged["Delta Importo"].abs() > 0.01)
+            filtered = merged[mismatch].copy()
+            if filtered.empty:
+                return
+
+            for _, row in filtered.iterrows():
+                ws.append(
+                    [
+                        section,
+                        row.get("Identificativo", ""),
+                        row.get("NFS Ragione sociale", ""),
+                        row.get("NFS N.fatture", ""),
+                        row.get("NFS Datat reg.", ""),
+                        row.get("NFS Importo", 0.0),
+                        row.get("Pisa Creditore", ""),
+                        row.get("Pisa Numero fattura", ""),
+                        row.get("Pisa Data emissione", ""),
+                        row.get("Pisa Importo fattura", 0.0),
+                        row.get("Delta Numero", 0),
+                        row.get("Delta Importo", 0.0),
+                    ]
+                )
+
+        nfs_elet_mask = ~nfs_cart_mask
+        pisa_elet_mask = ~pisa_cart_mask
+        nfs_elet = df_nfs[nfs_elet_mask & ~self._is_empty_sdi(df_nfs["_SDI_KEY"])].copy()
+        pisa_elet = df_pisa[pisa_elet_mask & ~self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
+
+        append_rows("Elettroniche", nfs_elet, pisa_elet, nfs_elet["_SDI_KEY"], pisa_elet["_SDI_KEY"])
+
+        nfs_cart = df_nfs[nfs_cart_mask].copy()
+        pisa_cart = df_pisa[pisa_cart_mask].copy()
+        nfs_cart_key = nfs_cart.apply(
+            lambda r: f"{normalize_text(r.get('Ragione sociale'))}|{normalize_text(r.get('N.fatture'))}",
+            axis=1,
+        )
+        pisa_cart_key = pisa_cart.apply(
+            lambda r: f"{normalize_text(r.get('Creditore'))}|{normalize_text(r.get('Numero fattura'))}",
+            axis=1,
+        )
+        append_rows("Cartacee", nfs_cart, pisa_cart, nfs_cart_key, pisa_cart_key)
+
+        money_format = "#,##0.00"
+        for row in ws.iter_rows(min_row=2, min_col=6, max_col=6):
+            for cell in row:
+                cell.number_format = money_format
+        for row in ws.iter_rows(min_row=2, min_col=10, max_col=10):
+            for cell in row:
+                cell.number_format = money_format
+        for row in ws.iter_rows(min_row=2, min_col=12, max_col=12):
+            for cell in row:
+                cell.number_format = money_format
+
+        ws.column_dimensions["A"].width = 14
+        ws.column_dimensions["B"].width = 26
+        ws.column_dimensions["C"].width = 26
+        ws.column_dimensions["D"].width = 14
+        ws.column_dimensions["E"].width = 16
+        ws.column_dimensions["F"].width = 16
+        ws.column_dimensions["G"].width = 26
+        ws.column_dimensions["H"].width = 18
+        ws.column_dimensions["I"].width = 18
+        ws.column_dimensions["J"].width = 18
+        ws.column_dimensions["K"].width = 14
+        ws.column_dimensions["L"].width = 16
 
     def _create_fatture_da_verificare_sheet(
         self,

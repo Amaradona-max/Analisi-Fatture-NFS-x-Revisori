@@ -103,17 +103,9 @@ def test_process_compare_creates_output(tmp_path: Path):
     assert summary["pisa"]["cartacee"]["amount"] == 50.0
 
     wb = load_workbook(out_path)
-    assert "Confronto" in wb.sheetnames
-    assert "Fatture da Verificare" in wb.sheetnames
-    assert "Differenze Elettroniche SDI" in wb.sheetnames
-    assert "Differenze SDI in Comune" in wb.sheetnames
-    assert "Pisa Solo - Mese NFS" in wb.sheetnames
-    ws = wb["Fatture da Verificare"]
-    assert ws.max_row >= 2
-
-    ws_diff = wb["Differenze SDI in Comune"]
-    assert ws_diff.max_row >= 2
-    assert ws_diff["A2"].value == "123"
-
-    ws_pisa = wb["Pisa Solo - Mese NFS"]
-    assert ws_pisa.max_row >= 1
+    assert wb.sheetnames == ["Confronto", "Dati e Valori Attesi", "Delta Fatture"]
+    dati_ws = wb["Dati e Valori Attesi"]
+    assert dati_ws.cell(row=2, column=1).value == "Cartacee"
+    assert dati_ws.cell(row=2, column=2).value == 254
+    delta_ws = wb["Delta Fatture"]
+    assert delta_ws.max_row >= 2
