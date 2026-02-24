@@ -89,16 +89,18 @@ class NFSFTFileProcessor:
         self.all_protocols = self.PROTOCOLLI_FASE2 + self.PROTOCOLLI_FASE3
 
     def validate_file(self, df: pd.DataFrame) -> None:
+        if "FAT_DATREG" not in df.columns and "DATA_REG_FATTURA" in df.columns:
+            df.rename(columns={"DATA_REG_FATTURA": "FAT_DATREG"}, inplace=True)
         missing_cols = [col for col in self.REQUIRED_COLUMNS if col not in df.columns]
         if missing_cols:
             raise ValueError(f"Colonne mancanti: {', '.join(missing_cols)}")
 
-    def _filter_january_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
+    def _filter_year_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
         if date_column not in df.columns:
             return df.iloc[0:0].copy()
         date_series = pd.to_datetime(df[date_column], errors="coerce")
         start = pd.Timestamp(year=2025, month=1, day=1)
-        end = pd.Timestamp(year=2025, month=1, day=31)
+        end = pd.Timestamp(year=2025, month=12, day=31)
         mask = date_series.between(start, end)
         return df[mask].copy()
 
@@ -106,6 +108,9 @@ class NFSFTFileProcessor:
         try:
             logger.info("Caricamento file: %s", input_path)
             df = pd.read_excel(input_path)
+
+            if "FAT_DATREG" not in df.columns and "DATA_REG_FATTURA" in df.columns:
+                df.rename(columns={"DATA_REG_FATTURA": "FAT_DATREG"}, inplace=True)
 
             self.validate_file(df)
 
@@ -418,7 +423,7 @@ class PisaFTFileProcessor(NFSFTFileProcessor):
             df_finale = df_pagato.iloc[:, selected_indices].copy()
             df_finale.columns = selected_columns
             data_pagamento_column_name = selected_columns[self.SELECTED_LETTERS.index("F")]
-            df_finale = self._filter_january_2025(df_finale, data_pagamento_column_name)
+            df_finale = self._filter_year_2025(df_finale, data_pagamento_column_name)
 
             sdi_column = df.columns[self._letters_to_indices(["A"])[0]]
             cartacee_df, elettroniche_df = self._split_by_sdi(df_finale, sdi_column)
@@ -821,14 +826,19 @@ class CompareFTFileProcessor:
             return df_pisa_raw[self.PISA_REQUIRED_COLUMNS].copy()
 
     def process_files(self, nfs_input_path: Path, pisa_input_path: Path, output_path: Path) -> Dict[str, Any]:
+        df_nfs_header = pd.read_excel(nfs_input_path, nrows=0)
+        nfs_required = list(self.NFS_REQUIRED_COLUMNS)
+        if "FAT_DATREG" not in df_nfs_header.columns and "DATA_REG_FATTURA" in df_nfs_header.columns:
+            nfs_required = ["DATA_REG_FATTURA" if col == "FAT_DATREG" else col for col in nfs_required]
         try:
-            df_nfs_raw = pd.read_excel(nfs_input_path, usecols=self.NFS_REQUIRED_COLUMNS)
+            df_nfs_raw = pd.read_excel(nfs_input_path, usecols=nfs_required)
         except ValueError:
-            df_nfs_header = pd.read_excel(nfs_input_path, nrows=0)
-            missing_nfs = [col for col in self.NFS_REQUIRED_COLUMNS if col not in df_nfs_header.columns]
+            missing_nfs = [col for col in nfs_required if col not in df_nfs_header.columns]
             if missing_nfs:
                 raise ValueError(f"Colonne mancanti nel file NFS: {', '.join(missing_nfs)}")
             raise
+        if "FAT_DATREG" not in df_nfs_raw.columns and "DATA_REG_FATTURA" in df_nfs_raw.columns:
+            df_nfs_raw.rename(columns={"DATA_REG_FATTURA": "FAT_DATREG"}, inplace=True)
         df_pisa = self._load_pisa_compare_df(pisa_input_path)
 
         df_nfs_lookup = df_nfs_raw[["FAT_DATREG", "TMC_G8"]].copy()
@@ -852,8 +862,8 @@ class CompareFTFileProcessor:
         df_nfs["_SDI_KEY"] = self._normalize_sdi(df_nfs["Identificativo SDI"])
         df_pisa["_SDI_KEY"] = self._normalize_sdi(df_pisa["Identificativo SDI"])
 
-        df_nfs_jan = self._filter_january_2025(df_nfs, "Datat reg.")
-        df_pisa_jan = self._filter_january_2025(df_pisa, "Data emissione")
+        df_nfs_jan = self._filter_year_2025(df_nfs, "Datat reg.")
+        df_pisa_jan = self._filter_year_2025(df_pisa, "Data emissione")
 
         nfs_protocol = df_nfs_jan["Prot."].astype(str).str.strip()
         df_nfs_jan = df_nfs_jan[nfs_protocol.isin(self.NFS_CARTACEE_PROTOCOLS + self.NFS_ELETTRONICHE_PROTOCOLS)].copy()
@@ -874,7 +884,7 @@ class CompareFTFileProcessor:
         pisa_elet_amount = round(float(df_pisa_jan.loc[~pisa_cart_mask, "Importo fattura"].sum()), 2)
 
         summary = {
-            "period": "2025-01",
+            "period": "2025",
             "nfs": {
                 "cartacee": {"count": nfs_cart_count, "amount": nfs_cart_amount, "amount_column": "Imponibile"},
                 "elettroniche": {"count": nfs_elet_count, "amount": nfs_elet_amount, "amount_column": "Imponibile"},
@@ -976,12 +986,12 @@ class CompareFTFileProcessor:
         wb.save(output_path)
         return summary
 
-    def _filter_january_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
+    def _filter_year_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
         if date_column not in df.columns:
             return df.iloc[0:0].copy()
         date_series = self._parse_date_series(df[date_column])
         start = pd.Timestamp(year=2025, month=1, day=1)
-        end = pd.Timestamp(year=2025, month=1, day=31)
+        end = pd.Timestamp(year=2025, month=12, day=31)
         mask = date_series.between(start, end)
         return df[mask].copy()
 

@@ -12,7 +12,7 @@ const FileUpload = ({ onFileSelect, disabled }) => {
       if (rejectedFiles.length > 0) {
         const rejection = rejectedFiles[0]
         if (rejection.errors[0]?.code === 'file-too-large') {
-          setError('File troppo grande. Dimensione massima: 50MB')
+          setError('File troppo grande. Dimensione massima: 60MB')
         } else if (rejection.errors[0]?.code === 'file-invalid-type') {
           setError('Formato file non valido. Carica un file .xlsx')
         } else {
@@ -33,7 +33,7 @@ const FileUpload = ({ onFileSelect, disabled }) => {
     accept: {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
     },
-    maxSize: 52428800,
+    maxSize: 62914560,
     maxFiles: 1,
     disabled,
   })
@@ -62,7 +62,7 @@ const FileUpload = ({ onFileSelect, disabled }) => {
             <p className="text-sm text-gray-500">
               ✓ Formati supportati: .xlsx
               <br />
-              ✓ Dimensione massima: 50MB
+              ✓ Dimensione massima: 60MB
             </p>
           </div>
         </div>

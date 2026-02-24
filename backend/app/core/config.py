@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     OUTPUT_DIR: Path = BASE_DIR / "outputs"
 
-    MAX_FILE_SIZE: int = 52428800
+    MAX_FILE_SIZE: int = 62914560
     ALLOWED_EXTENSIONS: set = {".xlsx"}
 
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
