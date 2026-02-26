@@ -299,7 +299,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 space-y-4">
-                  <h3 className="font-semibold text-gray-700">NFS (Gennaio 2025)</h3>
+                  <h3 className="font-semibold text-gray-700">NFS</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>
@@ -318,7 +318,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
                   </div>
                 </div>
                 <div className="bg-purple-50 p-6 rounded-lg border border-purple-200 space-y-4">
-                  <h3 className="font-semibold text-gray-700">Pisa (Gennaio 2025)</h3>
+                  <h3 className="font-semibold text-gray-700">Pisa</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>

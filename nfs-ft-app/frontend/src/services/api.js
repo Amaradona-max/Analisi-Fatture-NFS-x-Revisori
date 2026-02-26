@@ -5,11 +5,9 @@ const DEV_HOSTNAME =
     ? window.location.hostname
     : 'localhost'
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD
-    ? 'https://nfs-ft-backend.onrender.com'
-    : `http://${DEV_HOSTNAME}:8000`)
+const API_BASE_URL = import.meta.env.PROD
+  ? (import.meta.env.VITE_API_URL || 'https://nfs-ft-backend.onrender.com')
+  : `http://${DEV_HOSTNAME}:8000`
 
 const api = axios.create({
   baseURL: API_BASE_URL,

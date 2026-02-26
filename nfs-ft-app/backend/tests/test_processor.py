@@ -117,6 +117,7 @@ def test_process_file_pisa_ricevute_splits_by_sdi(tmp_path: Path):
                 "Data emissione": "2025-01-10",
                 "Data documento": "2025-01-10",
                 "Data pagamento": "",
+                "Importo Pagato": "100,00",
                 "IVA": "22,00",
                 "Importo fattura": "122,00",
                 "Identificativo SDI": "",
@@ -127,6 +128,7 @@ def test_process_file_pisa_ricevute_splits_by_sdi(tmp_path: Path):
                 "Data emissione": "2025-01-11",
                 "Data documento": "2025-01-11",
                 "Data pagamento": "",
+                "Importo Pagato": "200,00",
                 "IVA": "44,00",
                 "Importo fattura": "244,00",
                 "Identificativo SDI": "123",
@@ -137,6 +139,7 @@ def test_process_file_pisa_ricevute_splits_by_sdi(tmp_path: Path):
                 "Data emissione": "2025-01-12",
                 "Data documento": "2025-01-12",
                 "Data pagamento": "",
+                "Importo Pagato": "100,00",
                 "IVA": "0",
                 "Importo fattura": "100",
                 "Identificativo SDI": None,
@@ -166,6 +169,7 @@ def test_process_file_pisa_ricevute_treats_zero_sdi_as_cartacea(tmp_path: Path):
                 "Data emissione": "2025-01-10",
                 "Data documento": "2025-01-10",
                 "Data pagamento": "",
+                "Importo Pagato": "100,00",
                 "IVA": "22,00",
                 "Importo fattura": "122,00",
                 "Identificativo SDI": "0,0",
@@ -176,6 +180,7 @@ def test_process_file_pisa_ricevute_treats_zero_sdi_as_cartacea(tmp_path: Path):
                 "Data emissione": "2025-01-11",
                 "Data documento": "2025-01-11",
                 "Data pagamento": "",
+                "Importo Pagato": "200,00",
                 "IVA": "44,00",
                 "Importo fattura": "244,00",
                 "Identificativo SDI": "0",
@@ -186,6 +191,7 @@ def test_process_file_pisa_ricevute_treats_zero_sdi_as_cartacea(tmp_path: Path):
                 "Data emissione": "2025-01-12",
                 "Data documento": "2025-01-12",
                 "Data pagamento": "",
+                "Importo Pagato": "100,00",
                 "IVA": "0",
                 "Importo fattura": "100",
                 "Identificativo SDI": "123",
@@ -268,9 +274,4 @@ def test_compare_files_year_2025(tmp_path: Path):
     assert summary["pisa"]["elettroniche"]["count"] == 1
 
     wb = load_workbook(output_path, data_only=True)
-    assert wb.sheetnames == ["Confronto", "Dati e Valori Attesi", "Delta Fatture"]
-    dati_ws = wb["Dati e Valori Attesi"]
-    assert dati_ws.cell(row=2, column=1).value == "Cartacee"
-    assert dati_ws.cell(row=2, column=2).value == 254
-    delta_ws = wb["Delta Fatture"]
-    assert delta_ws.max_row >= 2
+    assert wb.sheetnames == ["Confronto", "Differenze tra file", "Stato Fatture Elettroniche"]

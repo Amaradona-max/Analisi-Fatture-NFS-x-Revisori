@@ -1,58 +1,101 @@
-# Riepilogo istruzioni applicazione
+# Guida operativa — 1. Query Fatture NFS (Ricevute 2025)
 
-## Sezioni applicazione
-- Due sezioni separate: FT NFS Pagato e FT Pisa Pagato.
-- Caricamento file .xlsx con elaborazione e download separati.
+Questa guida descrive la procedura completa, passo passo, per:
+- elaborare il file **FT NFS Ricevute**
+- elaborare il file **FT Pisa Ricevute**
+- generare il **Confronto** tra i due file sul periodo **01/01/2025–31/12/2025**
 
-## FT NFS Pagato
-- Flusso originale con protocolli Fase 2 e Fase 3.
-- Duplicati rimossi su FAT_NUM e C_NOME.
-- Filtra solo protocolli previsti.
-- Data di riferimento pagamento: colonna K (FAT_DATREG) → Data Registrazione.
-- Foglio Dati: la colonna Imponibile è valorizzata con FAT_DATREG (Data Registrazione).
-- Output con fogli Dati, Fatture Cartacee, Fatture Elettroniche.
+## Prerequisiti
+- File in formato `.xlsx` (massimo 50 MB).
+- I file devono contenere le colonne richieste (vedi sezione “Colonne richieste”).
 
-## FT Pisa Pagato – origine dati
-Dal file originale FT Pisa Pagato usare queste colonne in ordine nel foglio Dati:
-1. Colonna H (Creditore) → Ragione Sociale
-2. Colonna C → nome originale
-3. Colonna D → nome originale
-4. Colonna E → nome originale
-5. Colonna F → nome originale
-6. Colonna O → nome originale
-7. Colonna L (Importo Pagato) → Imponibile
-8. Colonna J (Importo Fattura) → Imp.Tot. Fatture
-9. Colonna A → nome originale
+## Procedura passo passo
 
-## FT Pisa Pagato – filtri
-- Considerare solo righe con Data Pagamento (colonna F) valorizzata.
-- Considerare solo righe del mese di gennaio 2025 (Data Pagamento).
-- Fatture Cartacee: colonna A (Identificativo SDI) vuota.
-- Fatture Elettroniche: colonna A (Identificativo SDI) non vuota.
+### 1) Elaborazione FT NFS Ricevute
+1. Apri la sezione **FT NFS Ricevute**.
+2. Seleziona il file `.xlsx` (es. `FT NFS Ricevute al 31.12.2025.xlsx`).
+3. Attendi la fine dell’elaborazione.
+4. Verifica il riepilogo mostrato a schermo:
+   - **Record Totali**
+   - **Duplicati rimossi**
+   - **Fase 2 – Cartacee**
+   - **Fase 3 – Elettroniche**
+5. Clicca **Scarica File Elaborato** per ottenere l’Excel di output.
 
-## FT Pisa Pagato – output
-- Foglio Dati con ordine e rinomina indicati.
-- Foglio Fatture Cartacee: Numero Totale e Imponibile.
-- Foglio Fatture Elettroniche: Numero Totale e Imponibile.
-- Per file molto grandi il foglio Dati può essere omesso per velocizzare l'elaborazione.
+**Cosa trovi nel file scaricato (NFS)**
+- `Dati`: righe elaborate e normalizzate.
+- `Fatture Cartacee`: riepilogo per protocolli cartacei (Fase 2).
+- `Fatture Elettroniche`: riepilogo per protocolli elettronici (Fase 3).
+- `Fatture Elettroniche SDI Unico` (se presente): sole elettroniche con SDI non vuoto e non duplicato.
 
-## Confronto Gennaio 2025
-- Confronto tra FT NFS Pagato e FT Pisa Pagato con focus sul mese di gennaio 2025.
-- Il filtro di gennaio 2025 si applica al FT Pisa Pagato sulla Data Pagamento.
-- Output con foglio "Confronto Gennaio 2025" e foglio "Diffrenze da Verificare".
+### 2) Elaborazione FT Pisa Ricevute
+1. Apri la sezione **FT Pisa Ricevute**.
+2. Seleziona il file `.xlsx` (es. `FT Pisa Ricevute al 31.12.2025.xlsx`).
+3. Attendi la fine dell’elaborazione.
+4. Verifica il riepilogo mostrato a schermo:
+   - **Record Totali**
+   - **Fase 2 – Cartacee**
+   - **Fase 3 – Elettroniche**
+5. Clicca **Scarica File Elaborato** per ottenere l’Excel di output.
 
-## Chiusura giornata 2026-02-13 13:56
-- Saluti fine giornata
-- Riepilogo aggiornato automaticamente.
+**Cosa trovi nel file scaricato (Pisa)**
+- `Dati`: righe elaborate (con colonne di interesse e formati data/importo).
+- `Fatture Cartacee`: riepilogo (numero totale e imponibile totale).
+- `Fatture Elettroniche`: riepilogo (numero totale e imponibile totale).
+- `Fatture Elettroniche SDI` (se presente): dettaglio delle sole elettroniche.
 
-## Chiusura giornata 2026-02-13 15:09
-- Saluti fine giornata
-- Riepilogo aggiornato automaticamente.
+### 3) Confronto tra FT NFS e FT Pisa (periodo 2025)
+1. Apri la sezione **Confronto**.
+2. Carica i due file:
+   - **FT NFS**: file NFS Ricevute
+   - **FT Pisa**: file Pisa Ricevute
+   In alternativa, se disponibili, usa **Usa ultimi file caricati**.
+3. Clicca **Confronta e genera file**.
+4. A fine elaborazione verifica il riepilogo a schermo:
+   - blocco **NFS**: `Cartacee` e `Elettroniche` con **conteggio** e **importo**
+   - blocco **Pisa**: `Cartacee` e `Elettroniche` con **conteggio** e **importo**
+5. Clicca **Scarica file confronto** per ottenere l’Excel di confronto.
+6. Per ripetere da zero, usa **Nuovo confronto**.
 
-## Chiusura giornata 2026-02-13 15:09
-- Saluti fine giornata
-- Riepilogo aggiornato automaticamente.
+**Cosa trovi nel file scaricato (Confronto)**
+- `Confronto`: tabella riassuntiva (Cartacee/Elettroniche/Totale) con delta.
+- `Dati e Valori Attesi`: riepilogo NFS vs Pisa con delta.
+- `Differenze tra file`: righe “in più” (o mancanti) nei due file.
+- `Differenze Elettroniche SDI`: differenze basate su Identificativo SDI.
+- `Differenze SDI in Comune`: SDI presenti in entrambi con importi/quantità diverse.
 
-## Chiusura giornata 2026-02-13 15:09
-- Saluti fine giornata
-- Riepilogo aggiornato automaticamente.
+## Regole usate (come vengono calcolati i numeri)
+
+### Periodo considerato nel Confronto
+- Il confronto considera solo righe nel periodo **01/01/2025–31/12/2025**.
+- La data usata per il filtro è:
+  - **NFS**: data di registrazione/immissione (`FAT_DATREG` oppure `DATA_REG_FATTURA`)
+  - **Pisa**: `Data emissione`
+
+### Cartacee vs Elettroniche
+- **NFS**
+  - Cartacee: protocolli di Fase 2.
+  - Elettroniche: protocolli di Fase 3.
+- **Pisa**
+  - Cartacee: `Identificativo SDI` vuoto / nullo / `0`.
+  - Elettroniche: `Identificativo SDI` valorizzato.
+
+## Colonne richieste (per evitare “Colonne mancanti”)
+
+### FT NFS Ricevute
+- Colonne minime richieste:
+  - `C_NOME`, `FAT_PROT`, `FAT_NUM`, `FAT_NDOC`, `FAT_DATDOC`, `IMPONIBILE`, `FAT_TOTFAT`, `FAT_TOTIVA`,
+    `RA_IMPON`, `RA_IMPOSTA`, `RA_CODTRIB`, `TMC_G8`
+  - data registrazione: `FAT_DATREG` oppure `DATA_REG_FATTURA`
+
+### FT Pisa Ricevute
+- Colonne minime richieste:
+  - `Creditore`, `Numero fattura`, `Data emissione`, `Data documento`, `IVA`, `Importo fattura`, `Identificativo SDI`
+
+## Problemi comuni
+- **Colonne mancanti**: verifica che i nomi colonna nel file corrispondano esattamente a quelli richiesti.
+- **Numeri/importi con virgola**: l’app gestisce sia `,` sia `.` nei campi importo.
+- **Il confronto mostra ancora i valori precedenti**: esegui **Nuovo confronto** e ricarica i file (o aggiorna la pagina e ripeti il confronto).
+
+## Log chiusure giornata (automatico)
+Questa sezione viene aggiornata automaticamente dalla funzione di “chiusura giornata”.

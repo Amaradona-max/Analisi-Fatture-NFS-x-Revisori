@@ -6,3 +6,7 @@
 **/dist/
 **/outputs/
 **/.DS_Store
+Library/
+**/tmp/
+tmp_*.xlsx
+*.xlsx

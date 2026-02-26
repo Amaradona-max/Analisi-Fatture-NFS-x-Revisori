@@ -4,7 +4,7 @@ Questa guida descrive esclusivamente la procedura **attualmente implementata e c
 
 - Elaborare il file **FT NFS Ricevute**
 - Elaborare il file **FT Pisa Ricevute (Fase 1)**
-- Eseguire il **confronto NFS vs Pisa** sul periodo **Gennaio 2025**
+- Eseguire il **confronto NFS vs Pisa** sul periodo **Anno 2025**
 - Scaricare e leggere i file Excel di output generati dall’app
 
 ## 1) Avvio applicazione (locale)
@@ -70,7 +70,7 @@ Il file deve contenere almeno queste colonne (nomi originali del file Excel):
 Durante l’elaborazione NFS:
 
 - Vengono rimossi i duplicati considerando la coppia:
-  - `FAT_NUM` + `C_NOME`
+  - `FAT_PROT` + `FAT_NUM`
 - Vengono mantenute solo le righe con protocolli ammessi:
   - Fatture cartacee (Fase 2): `P`, `2P`, `LABI`, `FCBI`, `FCSI`, `FCBE`, `FCSE`
   - Fatture elettroniche (Fase 3): `EP`, `2EP`, `EL`, `2EL`, `EZ`, `2EZ`, `EZP`, `FPIC`, `FSIC`, `FPEC`, `FSEC`, `AFIC`, `ASIC`, `AFEC`, `ASEC`, `ACBI`, `ACSI`, `ACBE`, `ACSE`
@@ -83,6 +83,17 @@ Scaricando l’output dell’elaborazione NFS ottieni un Excel con 3 fogli:
 - `Fatture Cartacee`: riepilogo per protocolli Fase 2
 - `Fatture Elettroniche`: riepilogo per protocolli Fase 3
 
+Ordine colonne nel foglio `Dati`:
+
+- `Ragione sociale`
+- `Numero fattura`
+- `Datta documento`
+- `Data Ricevimento`
+- `Imponibile`
+- `imposta`
+- `Importo tot. fattura`
+- `Identificativo SDI`
+
 ## 3) Elaborazione FT Pisa Ricevute (Fase 1)
 
 ### 3.1 Input richiesto (colonne minime)
@@ -93,7 +104,7 @@ Il file Pisa deve contenere almeno:
 - `Numero fattura`
 - `Data emissione`
 - `Data documento`
-- `Data pagamento`
+- `Importo Pagato`
 - `IVA`
 - `Importo fattura`
 - `Identificativo SDI`
@@ -102,9 +113,9 @@ Il file Pisa deve contenere almeno:
 
 Per ogni riga:
 
-- `Totale fatture` = `Importo fattura` (convertito in numero; supporta virgola come separatore decimale)
-- `Ivam` = `IVA` (convertito in numero; supporta virgola come separatore decimale)
-- `Imponibile` = `Totale fatture` − `Ivam`
+- `Importo tot. fattura` = `Importo fattura` (convertito in numero; supporta virgola come separatore decimale)
+- `imposta` = `IVA` (convertito in numero; supporta virgola come separatore decimale)
+- `Imponibile` = `Importo Pagato` (convertito in numero; supporta virgola come separatore decimale)
 
 Classificazione:
 
@@ -116,26 +127,37 @@ Classificazione:
 Scaricando l’output dell’elaborazione Pisa ottieni un Excel con 3 fogli:
 
 - `Dati`: elenco righe (date `dd/mm/yyyy`, importi a 2 decimali)
-- `Fatture Cartacee`: conteggio + somma `Totale fatture`
-- `Fatture Elettroniche`: conteggio + somma `Totale fatture`
+- `Fatture Cartacee`: conteggio + somma `Imponibile`
+- `Fatture Elettroniche`: conteggio + somma `Imponibile`
+
+Ordine colonne nel foglio `Dati`:
+
+- `Ragione sociale`
+- `Numero fattura`
+- `Datta documento`
+- `Data Ricevimento`
+- `Imponibile`
+- `imposta`
+- `Importo tot. fattura`
+- `Identificativo SDI`
 
 Controllo atteso per la Fase 1 (come riferimento operativo):
 
 - `Fatture Cartacee`: **N.253** e **€ 974.610,34** (Totale fatture)
 
-## 4) Confronto FT NFS Ricevute vs FT Pisa Ricevute (Gennaio 2025)
+## 4) Confronto FT NFS Ricevute vs FT Pisa Ricevute (Anno 2025)
 
 ### 4.1 Input del confronto
 
 Il confronto usa i **file originali** caricati (prima dell’elaborazione singola), con queste regole:
 
-- NFS: periodo filtrato con data `FAT_DATREG` (rinominata `Datat reg.`) nel mese **Gennaio 2025**
-- Pisa: periodo filtrato con `Data emissione` nel mese **Gennaio 2025**
+- NFS: periodo filtrato con data `FAT_DATREG` (rinominata `Datat reg.`) nell’intero **2025**
+- Pisa: periodo filtrato con `Data emissione` nell’intero **2025**
 
 ### 4.2 Regole NFS (nel confronto)
 
 1) Rimozione duplicati:
-- prima del confronto i duplicati NFS vengono rimossi con chiave `FAT_NUM` + `C_NOME`
+- prima del confronto i duplicati NFS vengono rimossi con chiave `FAT_PROT` + `FAT_NUM`
 
 2) Filtri:
 - sono considerate solo righe con protocollo appartenente a Fase 2 o Fase 3 (liste in §2.2)
@@ -156,7 +178,7 @@ Classificazione cartacee/elettroniche:
 
 Importo usato:
 
-- per entrambe le categorie l’importo è `Importo fattura`
+- per entrambe le categorie l’importo è `Imponibile` (derivato da `Importo Pagato`)
 
 ### 4.4 Normalizzazione Identificativo SDI
 
@@ -171,7 +193,7 @@ Scaricando il file di confronto ottieni un Excel con i seguenti fogli.
 
 ### 5.1 Foglio “Confronto”
 
-Riepilogo per Gennaio 2025:
+Riepilogo per Anno 2025:
 
 - Cartacee: numero + importo NFS vs Pisa e delta
 - Elettroniche: numero + importo NFS vs Pisa e delta
@@ -196,15 +218,15 @@ Nota operativa:
 
 Analisi dettagliata delle fatture elettroniche (SDI valorizzato) mostrando:
 
-- `Solo Pisa`: SDI presente nel Pisa (Gennaio 2025) ma assente nel NFS (Gennaio 2025)
-- `Solo NFS`: SDI presente nel NFS (Gennaio 2025) ma assente nel Pisa (Gennaio 2025)
+- `Solo Pisa`: SDI presente nel Pisa (2025) ma assente nel NFS (2025)
+- `Solo NFS`: SDI presente nel NFS (2025) ma assente nel Pisa (2025)
 - `NFS SDI vuoto`: righe NFS considerate elettroniche ma con SDI vuoto (casistiche anomale da verificare)
 
 ### 5.4 Foglio “Differenze SDI in Comune”
 
 Questo foglio considera solo gli SDI che sono:
 
-- presenti sia in NFS che in Pisa (Gennaio 2025)
+- presenti sia in NFS che in Pisa (2025)
 - **univoci** su entrambi i lati (1 riga in NFS e 1 riga in Pisa)
 
 Vengono riportate solo le righe con `Delta Importo` diverso da 0 (tolleranza 0,01).
@@ -213,8 +235,8 @@ Vengono riportate solo le righe con `Delta Importo` diverso da 0 (tolleranza 0,0
 
 Per ogni SDI che è:
 
-- presente nel Pisa (Gennaio 2025) come elettronica
-- assente nel NFS (Gennaio 2025) come elettronica
+- presente nel Pisa (2025) come elettronica
+- assente nel NFS (2025) come elettronica
 
 il foglio ricerca lo stesso SDI nel file NFS completo e riporta:
 
