@@ -72,8 +72,8 @@ Durante l’elaborazione NFS:
 - Vengono rimossi i duplicati considerando la coppia:
   - `FAT_PROT` + `FAT_NUM`
 - Vengono mantenute solo le righe con protocolli ammessi:
-  - Fatture cartacee (Fase 2): `P`, `2P`, `LABI`, `FCBI`, `FCSI`, `FCBE`, `FCSE`
-  - Fatture elettroniche (Fase 3): `EP`, `2EP`, `EL`, `2EL`, `EZ`, `2EZ`, `EZP`, `FPIC`, `FSIC`, `FPEC`, `FSEC`, `AFIC`, `ASIC`, `AFEC`, `ASEC`, `ACBI`, `ACSI`, `ACBE`, `ACSE`
+  - Fatture cartacee (Fase 2): `P`, `2P`, `LABI`
+  - Fatture elettroniche (Fase 3): `EP`, `2EP`, `EL`, `2EL`, `EZ`, `2EZ`, `EZP`, `FCBI`, `FCSI`, `FCBE`, `FCSE`, `FPIC`, `FSIC`, `FPEC`, `FSEC`, `AFIC`, `ASIC`, `AFEC`, `ASEC`, `ACBI`, `ACSI`, `ACBE`, `ACSE`
 
 ### 2.3 Output generato
 

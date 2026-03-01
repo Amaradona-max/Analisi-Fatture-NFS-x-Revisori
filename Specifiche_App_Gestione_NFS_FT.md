@@ -29,10 +29,6 @@ Applicazione web per l'elaborazione automatica di file Excel contenenti dati di 
 | P | Fatture Cartacee San |
 | 2P | Fatture Cartacee Ter |
 | LABI | Fatture Lib.Prof. San |
-| FCBI | Fatture Cartacee Estere San |
-| FCSI | Fatture Cartacee Estere San |
-| FCBE | Fatture Cartacee Estere San |
-| FCSE | Fatture Cartacee Estere San |
 
 #### FASE 3 - Fatture Elettroniche
 | Protocollo | Descrizione |
@@ -44,6 +40,10 @@ Applicazione web per l'elaborazione automatica di file Excel contenenti dati di 
 | EZ | Fatture Elettroniche Commerciali San |
 | 2EZ | Fatture Elettroniche Commerciali Ter |
 | EZP | Fatture Elettroniche Commerciali San |
+| FCBI | Fatture Elettroniche Estere San |
+| FCSI | Fatture Elettroniche Estere San |
+| FCBE | Fatture Elettroniche Estere San |
+| FCSE | Fatture Elettroniche Estere San |
 | FPIC | Fatture Elettroniche Estere San |
 | FSIC | Fatture Elettroniche Estere San |
 | FPEC | Fatture Elettroniche Estere San |

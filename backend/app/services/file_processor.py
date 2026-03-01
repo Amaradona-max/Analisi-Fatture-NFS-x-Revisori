@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class NFSFTFileProcessor:
-    PROTOCOLLI_FASE2 = ["P", "2P", "LABI", "FCBI", "FCSI", "FCBE", "FCSE"]
+    PROTOCOLLI_FASE2 = ["P", "2P", "LABI"]
     PROTOCOLLI_FASE3 = [
         "EP",
         "2EP",
@@ -23,6 +23,10 @@ class NFSFTFileProcessor:
         "EZ",
         "2EZ",
         "EZP",
+        "FCBI",
+        "FCSI",
+        "FCBE",
+        "FCSE",
         "FPIC",
         "FSIC",
         "FPEC",
@@ -41,10 +45,6 @@ class NFSFTFileProcessor:
         "P": "Fatture Cartacee San",
         "2P": "Fatture Cartacee Ter",
         "LABI": "Fatture Lib.Prof. San",
-        "FCBI": "Fatture Cartacee Estere San",
-        "FCSI": "Fatture Cartacee Estere San",
-        "FCBE": "Fatture Cartacee Estere San",
-        "FCSE": "Fatture Cartacee Estere San",
     }
 
     DESCRIZIONI_FASE3 = {
@@ -55,6 +55,10 @@ class NFSFTFileProcessor:
         "EZ": "Fatture Elettroniche Commerciali San",
         "2EZ": "Fatture Elettroniche Commerciali Ter",
         "EZP": "Fatture Elettroniche Commerciali San",
+        "FCBI": "Fatture Elettroniche Estere San",
+        "FCSI": "Fatture Elettroniche Estere San",
+        "FCBE": "Fatture Elettroniche Estere San",
+        "FCSE": "Fatture Elettroniche Estere San",
         "FPIC": "Fatture Elettroniche Estere San",
         "FSIC": "Fatture Elettroniche Estere San",
         "FPEC": "Fatture Elettroniche Estere San",
