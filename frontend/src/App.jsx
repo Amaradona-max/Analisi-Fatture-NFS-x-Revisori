@@ -196,7 +196,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
       const link = document.createElement('a')
       link.href = url
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
-      link.download = `Confronto_Gennaio_2025_${timestamp}.xlsx`
+      link.download = `Confronto_2025_${timestamp}.xlsx`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -223,10 +223,10 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <FileSpreadsheet className="w-8 h-8 text-blue-600" />
-          <h2 className="text-2xl font-bold text-gray-800">Confronto Gennaio 2025</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Confronto completo</h2>
         </div>
         <p className="text-gray-600">
-          Confronto FT NFS Pagato (gennaio 2025) vs FT Pisa Pagato (solo gennaio 2025).
+          Confronto FT NFS Pagato vs FT Pisa Pagato sull’intero file.
         </p>
       </div>
 
@@ -308,7 +308,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                  <h3 className="font-semibold text-gray-700 mb-3">FT NFS Pagato - Gennaio 2025</h3>
+                  <h3 className="font-semibold text-gray-700 mb-3">FT NFS Pagato</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>
@@ -327,7 +327,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
                   </div>
                 </div>
                 <div className="bg-purple-50 p-6 rounded-lg border border-purple-200">
-                  <h3 className="font-semibold text-gray-700 mb-3">FT Pisa Pagato - Gennaio 2025</h3>
+                  <h3 className="font-semibold text-gray-700 mb-3">FT Pisa Pagato</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>

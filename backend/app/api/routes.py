@@ -232,16 +232,10 @@ async def get_task_status(task_id: str):
 
         artifacts = list(settings.UPLOAD_DIR.glob(f"{task_id}*"))
         if artifacts:
-            latest_mtime = max(p.stat().st_mtime for p in artifacts)
-            if datetime.now().timestamp() - latest_mtime > 20 * 60:
-                return {
-                    "status": "error",
-                    "file_id": task_id,
-                    "error": "Elaborazione scaduta. Ricarica il file e riprova.",
-                }
             return {
-                "status": "processing",
+                "status": "error",
                 "file_id": task_id,
+                "error": "Elaborazione interrotta. Ricarica i file e riprova.",
             }
 
         raise HTTPException(status_code=404, detail="Task non trovato")

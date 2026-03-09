@@ -83,9 +83,10 @@ class NFSFTFileProcessor:
         "IMPONIBILE",
         "FAT_TOTFAT",
         "FAT_TOTIVA",
-        "RA_IMPON",
         "RA_CODTRIB",
         "RA_IMPOSTA",
+        "DMA_NUM",
+        "TMA_TOT",
         "TMC_G8",
     ]
 
@@ -99,6 +100,42 @@ class NFSFTFileProcessor:
         if missing_cols:
             raise ValueError(f"Colonne mancanti: {', '.join(missing_cols)}")
 
+    def _read_excel_flexible(self, input_path: Path) -> pd.DataFrame:
+        try:
+            df = pd.read_excel(input_path)
+            if len(df.columns) > 0:
+                df.columns = [str(c).strip() for c in df.columns]
+                has_real_headers = any(col and not col.lower().startswith("unnamed") for col in df.columns)
+                if has_real_headers:
+                    if "DATA_REG_FATTURA" in df.columns and "FAT_DATREG" not in df.columns:
+                        df["FAT_DATREG"] = df["DATA_REG_FATTURA"]
+                    if "FAT_REG_FATTURA" in df.columns and "FAT_DATREG" not in df.columns:
+                        df["FAT_DATREG"] = df["FAT_REG_FATTURA"]
+                    return df
+        except Exception:
+            pass
+        try:
+            raw = pd.read_excel(input_path, header=None, nrows=15)
+        except Exception:
+            raw = None
+        header_row = 0
+        if raw is not None and not raw.empty:
+            required = set(self.REQUIRED_COLUMNS)
+            best_match = (-1, 0)
+            for i in range(len(raw)):
+                vals = raw.iloc[i].astype(str).str.strip().tolist()
+                match = len(required.intersection(vals))
+                if match > best_match[0]:
+                    best_match = (match, i)
+            if best_match[0] > 0:
+                header_row = best_match[1]
+        df = pd.read_excel(input_path, header=header_row)
+        df.columns = [str(c).strip() for c in df.columns]
+        if "DATA_REG_FATTURA" in df.columns and "FAT_DATREG" not in df.columns:
+            df["FAT_DATREG"] = df["DATA_REG_FATTURA"]
+        if "FAT_REG_FATTURA" in df.columns and "FAT_DATREG" not in df.columns:
+            df["FAT_DATREG"] = df["FAT_REG_FATTURA"]
+        return df
     def _filter_year_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
         if date_column not in df.columns:
             return df.iloc[0:0].copy()
@@ -108,19 +145,31 @@ class NFSFTFileProcessor:
         mask = date_series.between(start, end)
         return df[mask].copy()
 
+    def _split_by_sdi(self, df: pd.DataFrame, sdi_column: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+        sdi_series = df[sdi_column]
+        normalized = sdi_series.astype(str).str.strip().where(~sdi_series.isna(), "")
+        normalized = normalized.str.lower().str.replace(",", ".", regex=False)
+        empty_text_mask = normalized.isin(["", "nan", "none", "null"])
+        numeric = pd.to_numeric(normalized, errors="coerce")
+        zero_mask = numeric.eq(0) & ~numeric.isna()
+        empty_mask = empty_text_mask | zero_mask
+        cartacee_df = df[empty_mask].copy()
+        elettroniche_df = df[~empty_mask].copy()
+        return cartacee_df, elettroniche_df
+
     def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
         try:
             logger.info("Caricamento file: %s", input_path)
-            df = pd.read_excel(input_path)
+            df = self._read_excel_flexible(input_path)
 
             if "FAT_DATREG" not in df.columns and "DATA_REG_FATTURA" in df.columns:
                 df.rename(columns={"DATA_REG_FATTURA": "FAT_DATREG"}, inplace=True)
 
             self.validate_file(df)
 
-            df["FAT_PROT"] = df["FAT_PROT"].astype(str).str.strip()
+            df["FAT_PROT"] = df["FAT_PROT"].astype(str).str.strip().str.upper()
             totale_iniziale = len(df)
-            df_senza_duplicati = df.drop_duplicates(subset=["FAT_NUM", "C_NOME"]).copy()
+            df_senza_duplicati = df.drop_duplicates(subset=["FAT_NDOC", "C_NOME"]).copy()
             duplicati_rimossi = totale_iniziale - len(df_senza_duplicati)
             df_filtrato = df_senza_duplicati[df_senza_duplicati["FAT_PROT"].isin(self.all_protocols)].copy()
 
@@ -134,6 +183,20 @@ class NFSFTFileProcessor:
                 .where(lambda value: value.isin(["I9", "RO"]), "")
             )
 
+            df_filtrato["PAGATO_LIB_PROF"] = None
+            mask_lib_prof = df_filtrato["FAT_PROT"].isin(["LABI", "EL", "2EL"]) & df_filtrato["RA_CODTRIB"].isin(
+                ["I9", "RO"]
+            )
+            df_filtrato.loc[mask_lib_prof, "PAGATO_LIB_PROF"] = pd.to_numeric(
+                df_filtrato.loc[mask_lib_prof, "FAT_TOTFAT"], errors="coerce"
+            ) - pd.to_numeric(df_filtrato.loc[mask_lib_prof, "RA_IMPOSTA"], errors="coerce")
+
+            df_filtrato["PAGATO_ISTIT"] = None
+            mask_istit = ~df_filtrato["FAT_PROT"].isin(["LABI", "EL", "2EL"])
+            df_filtrato.loc[mask_istit, "PAGATO_ISTIT"] = pd.to_numeric(
+                df_filtrato.loc[mask_istit, "IMPONIBILE"], errors="coerce"
+            )
+
             colonne_ordinate = [
                 "C_NOME",
                 "FAT_DATDOC",
@@ -141,57 +204,62 @@ class NFSFTFileProcessor:
                 "FAT_DATREG",
                 "FAT_PROT",
                 "FAT_NUM",
-                "FAT_TOTIVA",
                 "IMPONIBILE",
-                "FAT_TOTFAT",
+                "FAT_TOTIVA",
                 "RA_CODTRIB",
-                "RA_IMPOSTA",
-                "RA_IMPON",
+                "DMA_NUM",
+                "TMA_TOT",
                 "TMC_G8",
             ]
+
+            for c in ["DMA_NUM", "TMA_TOT"]:
+                if c not in df_filtrato.columns:
+                    df_filtrato[c] = None
 
             df_finale = df_filtrato[colonne_ordinate].copy()
             df_finale.columns = [
                 "Ragione Sociale",
                 "Data Fatture",
                 "N. Fatture",
-                "Data Registrazione",
+                "Data registrazione pagamento",
                 "Protocollo",
                 "N. Protocollo",
+                "Imponibile",
                 "Imposta",
-                "Tot. Imponibile",
-                "Tot. Imp. Fatture",
-                "Rit. Codice Tributo",
-                "Rit. Imposta",
-                "Rit. Imp.",
+                "Ritenuta D’acconto",
+                "N. Mandato",
+                "Importo Mandato",
                 "Identificativo SDI",
             ]
 
+            df_finale["Pagato Lib. Prof."] = df_filtrato["PAGATO_LIB_PROF"].values
+            df_finale["Pagato Istit."] = df_filtrato["PAGATO_ISTIT"].values
+
             df_finale["Data Fatture"] = pd.to_datetime(df_finale["Data Fatture"], errors="coerce")
-            df_finale["Data Registrazione"] = pd.to_datetime(df_finale["Data Registrazione"], errors="coerce")
+            df_finale["Data registrazione pagamento"] = pd.to_datetime(
+                df_finale["Data registrazione pagamento"], errors="coerce"
+            )
 
-            df_finale = df_finale.sort_values("Data Registrazione")
-
-            df_dati = df_finale.copy()
-            if "Data Registrazione" in df_dati.columns:
-                df_dati["Imponibile"] = df_dati["Data Registrazione"]
-                df_dati = df_dati.drop(columns=["Data Registrazione"], errors="ignore")
-            df_dati = df_dati.drop(columns=["Tot. Imponibile"], errors="ignore")
             ordered_columns = [
                 "Ragione Sociale",
                 "Data Fatture",
                 "N. Fatture",
+                "Data registrazione pagamento",
                 "Protocollo",
                 "N. Protocollo",
-                "Imposta",
                 "Imponibile",
-                "Tot. Imp. Fatture",
-                "Rit. Codice Tributo",
-                "Rit. Imposta",
-                "Rit. Imp.",
+                "Pagato Lib. Prof.",
+                "Pagato Istit.",
+                "Imposta",
+                "Ritenuta D’acconto",
+                "N. Mandato",
+                "Importo Mandato",
                 "Identificativo SDI",
             ]
-            df_dati = df_dati[[col for col in ordered_columns if col in df_dati.columns]]
+            df_finale = df_finale[[col for col in ordered_columns if col in df_finale.columns]]
+            df_finale = df_finale.sort_values("Data registrazione pagamento")
+
+            df_dati = df_finale.copy()
 
             stats = self._calculate_stats(df_finale, duplicati_rimossi)
             self._create_excel_output(df_finale, output_path, display_df=df_dati)
@@ -203,16 +271,21 @@ class NFSFTFileProcessor:
             raise
 
     def _calculate_stats(self, df: pd.DataFrame, duplicates_removed: int) -> Dict[str, Any]:
-        fase2_count = df[df["Protocollo"].isin(self.PROTOCOLLI_FASE2)].shape[0]
-        fase3_count = df[df["Protocollo"].isin(self.PROTOCOLLI_FASE3)].shape[0]
+        protocol_series = df["Protocollo"].astype(str).str.strip().str.upper()
+        cartacee_mask = protocol_series.isin(self.PROTOCOLLI_FASE2)
+        elettroniche_mask = protocol_series.isin(self.PROTOCOLLI_FASE3)
+        fase2_count = int(cartacee_mask.sum())
+        fase3_count = int(elettroniche_mask.sum())
+        protocols_fase2 = {prot: int((protocol_series == prot).sum()) for prot in self.PROTOCOLLI_FASE2}
+        protocols_fase3 = {prot: int((protocol_series == prot).sum()) for prot in self.PROTOCOLLI_FASE3}
 
         return {
             "total_records": len(df),
             "fase2_records": fase2_count,
             "fase3_records": fase3_count,
             "duplicates_removed": duplicates_removed,
-            "protocols_fase2": self._count_by_protocol(df, self.PROTOCOLLI_FASE2),
-            "protocols_fase3": self._count_by_protocol(df, self.PROTOCOLLI_FASE3),
+            "protocols_fase2": protocols_fase2,
+            "protocols_fase3": protocols_fase3,
         }
 
     def _count_by_protocol(self, df: pd.DataFrame, protocols: list) -> Dict[str, int]:
@@ -242,15 +315,19 @@ class NFSFTFileProcessor:
             header_font,
             total_fill,
             total_font,
-            date_columns=["Data Fatture", "Data Registrazione", "Imponibile"],
-            money_columns=["Imposta", "Tot. Imponibile", "Tot. Imp. Fatture", "Rit. Imposta", "Rit. Imp."],
+            date_columns=["Data Fatture", "Data registrazione pagamento"],
+            money_columns=["Imposta", "Imponibile", "Importo Mandato", "Pagato Lib. Prof.", "Pagato Istit."],
             use_active=True,
         )
 
-        ws_nota2 = wb.create_sheet("Fatture Cartacee")
+        protocol_series = df["Protocollo"].astype(str).str.strip().str.upper()
+        cartacee_df = df[protocol_series.isin(self.PROTOCOLLI_FASE2)].copy()
+        elettroniche_df = df[protocol_series.isin(self.PROTOCOLLI_FASE3)].copy()
+
+        ws_nota2 = wb.create_sheet("Nota Riepilogativa 2")
         self._create_summary_sheet(
             ws_nota2,
-            df,
+            cartacee_df,
             self.PROTOCOLLI_FASE2,
             self.DESCRIZIONI_FASE2,
             header_fill,
@@ -259,10 +336,10 @@ class NFSFTFileProcessor:
             total_font,
         )
 
-        ws_nota3 = wb.create_sheet("Fatture Elettroniche")
+        ws_nota3 = wb.create_sheet("Nota Riepilogativa 3")
         self._create_summary_sheet(
             ws_nota3,
-            df,
+            elettroniche_df,
             self.PROTOCOLLI_FASE3,
             self.DESCRIZIONI_FASE3,
             header_fill,
@@ -365,7 +442,7 @@ class NFSFTFileProcessor:
         for prot in protocols:
             count = len(df[df["Protocollo"] == prot])
             imponibile_totale = pd.to_numeric(
-                df.loc[df["Protocollo"] == prot, "Tot. Imponibile"], errors="coerce"
+                df.loc[df["Protocollo"] == prot, "Imponibile"], errors="coerce"
             ).sum()
             ws[f"A{row}"] = prot
             ws[f"B{row}"] = descriptions[prot]
@@ -602,46 +679,78 @@ class CompareFTFileProcessor:
     NFS_CARTACEE_PROTOCOLS = NFSFTFileProcessor.PROTOCOLLI_FASE2
     NFS_ELETTRONICHE_PROTOCOLS = NFSFTFileProcessor.PROTOCOLLI_FASE3
 
-    PISA_REQUIRED_COLUMNS = ["Creditore", "Numero fattura", "Identificativo SDI", "Data emissione", "Importo fattura"]
+    PISA_REQUIRED_COLUMNS = [
+        "Creditore",
+        "Numero fattura",
+        "Identificativo SDI",
+        "Importo fattura",
+        "IVA",
+        "Data emissione",
+        "Data documento",
+        "Data pagamento",
+    ]
 
     def process_files(self, nfs_input_path: Path, pisa_input_path: Path, output_path: Path) -> Dict[str, Any]:
-        df_nfs_header = pd.read_excel(nfs_input_path, nrows=0)
-        nfs_required = list(self.NFS_REQUIRED_COLUMNS)
-        if "FAT_DATREG" not in df_nfs_header.columns and "DATA_REG_FATTURA" in df_nfs_header.columns:
-            nfs_required = ["DATA_REG_FATTURA" if col == "FAT_DATREG" else col for col in nfs_required]
-        try:
-            df_nfs_raw = pd.read_excel(nfs_input_path, usecols=nfs_required)
-        except ValueError:
-            missing_nfs = [col for col in nfs_required if col not in df_nfs_header.columns]
-            if missing_nfs:
-                raise ValueError(f"Colonne mancanti nel file NFS: {', '.join(missing_nfs)}")
-            raise
-        if "FAT_DATREG" not in df_nfs_raw.columns and "DATA_REG_FATTURA" in df_nfs_raw.columns:
-            df_nfs_raw.rename(columns={"DATA_REG_FATTURA": "FAT_DATREG"}, inplace=True)
+        df_nfs_raw = self._read_excel_with_header(nfs_input_path, self.NFS_REQUIRED_COLUMNS)
+        if "DATA_REG_FATTURA" in df_nfs_raw.columns and "FAT_DATREG" not in df_nfs_raw.columns:
+            df_nfs_raw["FAT_DATREG"] = df_nfs_raw["DATA_REG_FATTURA"]
+        if "FAT_REG_FATTURA" in df_nfs_raw.columns and "FAT_DATREG" not in df_nfs_raw.columns:
+            df_nfs_raw["FAT_DATREG"] = df_nfs_raw["FAT_REG_FATTURA"]
+        missing_nfs = [col for col in self.NFS_REQUIRED_COLUMNS if col not in df_nfs_raw.columns]
+        if missing_nfs:
+            raise ValueError(f"Colonne mancanti nel file NFS: {', '.join(missing_nfs)}")
 
-        try:
-            df_pisa_raw = pd.read_excel(pisa_input_path, usecols=self.PISA_REQUIRED_COLUMNS, dtype=str)
-        except ValueError:
-            df_pisa_header = pd.read_excel(pisa_input_path, nrows=0)
-            missing_pisa = [col for col in self.PISA_REQUIRED_COLUMNS if col not in df_pisa_header.columns]
-            if missing_pisa:
-                raise ValueError(f"Colonne mancanti nel file Pisa: {', '.join(missing_pisa)}")
-            raise
+        df_pisa_raw = self._read_excel_with_header(pisa_input_path, self.PISA_REQUIRED_COLUMNS, dtype=str)
+        missing_pisa = [
+            col
+            for col in ["Creditore", "Numero fattura", "Identificativo SDI", "Importo fattura", "IVA", "Data documento"]
+            if col not in df_pisa_raw.columns
+        ]
+        if missing_pisa:
+            raise ValueError(f"Colonne mancanti nel file Pisa: {', '.join(missing_pisa)}")
+        has_data_pagamento = "Data pagamento" in df_pisa_raw.columns
+        has_data_emissione = "Data emissione" in df_pisa_raw.columns
+        if not (has_data_pagamento or has_data_emissione):
+            raise ValueError("Colonne mancanti nel file Pisa: Data pagamento o Data emissione")
+        if not has_data_emissione and has_data_pagamento:
+            df_pisa_raw["Data emissione"] = df_pisa_raw["Data pagamento"]
+
+        df_nfs_raw["FAT_PROT"] = df_nfs_raw["FAT_PROT"].astype(str).str.strip().str.upper()
+        allowed_protocols = self.NFS_CARTACEE_PROTOCOLS + self.NFS_ELETTRONICHE_PROTOCOLS
+        df_nfs_raw = df_nfs_raw[df_nfs_raw["FAT_PROT"].isin(allowed_protocols)].copy()
 
         df_nfs_lookup = df_nfs_raw[["FAT_DATREG", "TMC_G8"]].copy()
         df_nfs_lookup.rename(columns={"FAT_DATREG": "Datat reg.", "TMC_G8": "Identificativo SDI"}, inplace=True)
         df_nfs_lookup["Datat reg."] = pd.to_datetime(df_nfs_lookup["Datat reg."], errors="coerce")
         df_nfs_lookup["_SDI_KEY"] = self._normalize_sdi(df_nfs_lookup["Identificativo SDI"])
 
-        df_nfs_deduped = df_nfs_raw.drop_duplicates(subset=["FAT_NUM", "C_NOME"]).copy()
+        df_nfs_deduped = df_nfs_raw.drop_duplicates(subset=["FAT_NDOC", "C_NOME"]).copy()
         df_nfs = df_nfs_deduped[self.NFS_REQUIRED_COLUMNS].copy()
         df_nfs.rename(columns=self.NFS_RENAME_MAP, inplace=True)
         df_nfs["Data Fatture"] = pd.to_datetime(df_nfs["Data Fatture"], errors="coerce")
         df_nfs["Datat reg."] = pd.to_datetime(df_nfs["Datat reg."], errors="coerce")
         df_nfs["Imponibile"] = pd.to_numeric(df_nfs["Imponibile"], errors="coerce").fillna(0)
 
-        df_pisa = df_pisa_raw[self.PISA_REQUIRED_COLUMNS].copy()
+        pisa_columns = [
+            "Creditore",
+            "Numero fattura",
+            "Identificativo SDI",
+            "Importo fattura",
+            "IVA",
+            "Data emissione",
+            "Data documento",
+        ]
+        if has_data_pagamento:
+            pisa_columns.append("Data pagamento")
+        df_pisa = df_pisa_raw[pisa_columns].copy()
         df_pisa["Data emissione"] = pd.to_datetime(df_pisa["Data emissione"], errors="coerce")
+        df_pisa["Data documento"] = pd.to_datetime(df_pisa["Data documento"], errors="coerce")
+        if has_data_pagamento:
+            df_pisa["Data pagamento"] = pd.to_datetime(df_pisa["Data pagamento"], errors="coerce")
+        df_pisa["IVA"] = pd.to_numeric(
+            df_pisa["IVA"].astype(str).str.replace(",", ".", regex=False),
+            errors="coerce",
+        ).fillna(0)
         df_pisa["Importo fattura"] = pd.to_numeric(
             df_pisa["Importo fattura"].astype(str).str.replace(",", ".", regex=False),
             errors="coerce",
@@ -650,29 +759,26 @@ class CompareFTFileProcessor:
         df_nfs["_SDI_KEY"] = self._normalize_sdi(df_nfs["Identificativo SDI"])
         df_pisa["_SDI_KEY"] = self._normalize_sdi(df_pisa["Identificativo SDI"])
 
-        df_nfs_jan = self._filter_year_2025(df_nfs, "Datat reg.")
-        df_pisa_jan = self._filter_year_2025(df_pisa, "Data emissione")
+        df_nfs_all = df_nfs.copy()
+        df_pisa_all = df_pisa.copy()
 
-        nfs_protocol = df_nfs_jan["Prot."].astype(str).str.strip()
-        df_nfs_jan = df_nfs_jan[nfs_protocol.isin(self.NFS_CARTACEE_PROTOCOLS + self.NFS_ELETTRONICHE_PROTOCOLS)].copy()
-        nfs_protocol = df_nfs_jan["Prot."].astype(str).str.strip()
-        nfs_sdi_empty = self._is_empty_sdi(df_nfs_jan["_SDI_KEY"])
-        nfs_cart_mask = nfs_protocol.isin(self.NFS_CARTACEE_PROTOCOLS) & nfs_sdi_empty
-        nfs_elet_mask = ~nfs_cart_mask
-        pisa_cart_mask = self._is_empty_sdi(df_pisa_jan["_SDI_KEY"])
+        nfs_protocols = df_nfs_all["Prot."].astype(str).str.strip().str.upper()
+        nfs_cart_mask = nfs_protocols.isin(self.NFS_CARTACEE_PROTOCOLS)
+        nfs_elet_mask = nfs_protocols.isin(self.NFS_ELETTRONICHE_PROTOCOLS)
+        pisa_cart_mask = self._is_empty_sdi(df_pisa_all["_SDI_KEY"])
 
         nfs_cart_count = int(nfs_cart_mask.sum())
         nfs_elet_count = int(nfs_elet_mask.sum())
         pisa_cart_count = int(pisa_cart_mask.sum())
         pisa_elet_count = int((~pisa_cart_mask).sum())
 
-        nfs_cart_amount = round(float(df_nfs_jan.loc[nfs_cart_mask, "Imponibile"].sum()), 2)
-        nfs_elet_amount = round(float(df_nfs_jan.loc[nfs_elet_mask, "Imponibile"].sum()), 2)
-        pisa_cart_amount = round(float(df_pisa_jan.loc[pisa_cart_mask, "Importo fattura"].sum()), 2)
-        pisa_elet_amount = round(float(df_pisa_jan.loc[~pisa_cart_mask, "Importo fattura"].sum()), 2)
+        nfs_cart_amount = round(float(df_nfs_all.loc[nfs_cart_mask, "Imponibile"].sum()), 2)
+        nfs_elet_amount = round(float(df_nfs_all.loc[nfs_elet_mask, "Imponibile"].sum()), 2)
+        pisa_cart_amount = round(float(df_pisa_all.loc[pisa_cart_mask, "Importo fattura"].sum()), 2)
+        pisa_elet_amount = round(float(df_pisa_all.loc[~pisa_cart_mask, "Importo fattura"].sum()), 2)
 
         summary = {
-            "period": "2025",
+            "period": "Tutto il periodo",
             "nfs": {
                 "cartacee": {"count": nfs_cart_count, "amount": nfs_cart_amount, "amount_column": "Imponibile"},
                 "elettroniche": {"count": nfs_elet_count, "amount": nfs_elet_amount, "amount_column": "Imponibile"},
@@ -684,16 +790,102 @@ class CompareFTFileProcessor:
         }
 
         wb = Workbook()
+        wb.remove(wb.active)
 
         header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
         header_font = Font(bold=True, color="FFFFFF")
+        self._create_confronto_sheet(
+            wb=wb,
+            nfs_cart_count=nfs_cart_count,
+            nfs_cart_amount=nfs_cart_amount,
+            nfs_elet_count=nfs_elet_count,
+            nfs_elet_amount=nfs_elet_amount,
+            pisa_cart_count=pisa_cart_count,
+            pisa_cart_amount=pisa_cart_amount,
+            pisa_elet_count=pisa_elet_count,
+            pisa_elet_amount=pisa_elet_amount,
+            header_fill=header_fill,
+            header_font=header_font,
+        )
+        self._create_fatture_da_verificare_sheet(
+            wb=wb,
+            df_nfs=df_nfs_all,
+            df_pisa=df_pisa_all,
+            header_fill=header_fill,
+            header_font=header_font,
+        )
+        self._create_delta_ft_sheet(
+            wb=wb,
+            df_nfs=df_nfs_all,
+            df_pisa=df_pisa_all,
+            header_fill=header_fill,
+            header_font=header_font,
+        )
+
+        wb.save(output_path)
+        return summary
+
+    def _read_excel_with_header(
+        self,
+        input_path: Path,
+        required_columns: list[str],
+        dtype: Optional[dict | str] = None,
+    ) -> pd.DataFrame:
+        try:
+            df = pd.read_excel(input_path, dtype=dtype)
+            if len(df.columns) > 0:
+                df.columns = [str(c).strip() for c in df.columns]
+                has_real_headers = any(col and not col.lower().startswith("unnamed") for col in df.columns)
+                if has_real_headers:
+                    return df
+        except Exception:
+            pass
+        try:
+            raw = pd.read_excel(input_path, header=None, nrows=15)
+        except Exception:
+            raw = None
+        header_row = 0
+        if raw is not None and not raw.empty:
+            required = set(required_columns)
+            best_match = (-1, 0)
+            for i in range(len(raw)):
+                vals = raw.iloc[i].astype(str).str.strip().tolist()
+                match = len(required.intersection(vals))
+                if match > best_match[0]:
+                    best_match = (match, i)
+            if best_match[0] > 0:
+                header_row = best_match[1]
+        df = pd.read_excel(input_path, header=header_row, dtype=dtype)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+
+    def _create_confronto_sheet(
+        self,
+        wb: Workbook,
+        nfs_cart_count: int,
+        nfs_cart_amount: float,
+        nfs_elet_count: int,
+        nfs_elet_amount: float,
+        pisa_cart_count: int,
+        pisa_cart_amount: float,
+        pisa_elet_count: int,
+        pisa_elet_amount: float,
+        header_fill: PatternFill,
+        header_font: Font,
+    ) -> None:
+        ws = wb.create_sheet("Confronto")
         total_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
         total_font = Font(bold=True)
 
-        ws = wb.active
-        ws.title = "Confronto"
-
-        headers = ["Categoria", "NFS Numero", "NFS Importo", "Pisa Numero", "Pisa Importo", "Delta Numero", "Delta Importo"]
+        headers = [
+            "Categoria",
+            "NFS Numero",
+            "NFS Importo",
+            "Pisa Numero",
+            "Pisa Importo",
+            "Delta Numero",
+            "Delta Importo",
+        ]
         for col_idx, value in enumerate(headers, start=1):
             cell = ws.cell(row=1, column=col_idx, value=value)
             cell.fill = header_fill
@@ -733,20 +925,6 @@ class CompareFTFileProcessor:
         ws.column_dimensions["F"].width = 14
         ws.column_dimensions["G"].width = 16
 
-        self._create_dati_valori_attesi_sheet(wb, header_fill, header_font, total_fill, total_font)
-        self._create_delta_fatture_sheet(
-            wb=wb,
-            df_nfs=df_nfs_jan,
-            df_pisa=df_pisa_jan,
-            nfs_cart_mask=nfs_cart_mask,
-            pisa_cart_mask=pisa_cart_mask,
-            header_fill=header_fill,
-            header_font=header_font,
-        )
-
-        wb.save(output_path)
-        return summary
-
     def _filter_year_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
         if date_column not in df.columns:
             return df.iloc[0:0].copy()
@@ -757,11 +935,12 @@ class CompareFTFileProcessor:
         return df[mask].copy()
 
     def _is_empty_sdi(self, series: pd.Series) -> pd.Series:
-        normalized = series.astype(str).str.strip()
-        normalized_lower = normalized.str.lower()
-        zero_mask = normalized_lower.str.fullmatch(r"0+(\.0+)?").fillna(False)
-        empty_mask = normalized_lower.isin(["", "nan", "none", "null"]) | zero_mask
-        return empty_mask
+        normalized = series.astype(str).str.strip().where(~series.isna(), "")
+        normalized = normalized.str.lower().str.replace(",", ".", regex=False)
+        empty_text_mask = normalized.isin(["", "nan", "none", "null"])
+        numeric = pd.to_numeric(normalized, errors="coerce")
+        zero_mask = numeric.eq(0) & ~numeric.isna()
+        return empty_text_mask | zero_mask
 
     def _normalize_sdi(self, series: pd.Series) -> pd.Series:
         def normalize_value(value: Any) -> str:
@@ -990,21 +1169,20 @@ class CompareFTFileProcessor:
         header_fill: PatternFill,
         header_font: Font,
     ) -> None:
-        ws = wb.create_sheet("Fatture da Verificare")
+        ws = wb.create_sheet("Differenze tra file")
 
         headers = [
+            "File",
+            "Categoria",
+            "Ragione sociale",
+            "Numero fattura",
+            "Data documento",
+            "Data Registrazione Fattura",
+            "Data immissione",
+            "Imponibile",
+            "imposta",
+            "Importo tot. fattura",
             "Identificativo SDI",
-            "Esito",
-            "NFS Ragione sociale",
-            "NFS N.fatture",
-            "NFS Datat reg.",
-            "NFS Imponibile",
-            "Pisa Creditore",
-            "Pisa Numero fattura",
-            "Pisa Data emissione",
-            "Pisa Importo fattura",
-            "Delta Numero",
-            "Delta Importo",
         ]
         for col_idx, value in enumerate(headers, start=1):
             cell = ws.cell(row=1, column=col_idx, value=value)
@@ -1012,124 +1190,307 @@ class CompareFTFileProcessor:
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        nfs_non_empty = df_nfs[~self._is_empty_sdi(df_nfs["_SDI_KEY"])].copy()
-        pisa_non_empty = df_pisa[~self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
+        nfs_protocols = df_nfs["Prot."].astype(str).str.strip().str.upper()
+        nfs_elet = df_nfs[nfs_protocols.isin(self.NFS_ELETTRONICHE_PROTOCOLS)].copy()
+        nfs_elet = nfs_elet[~self._is_empty_sdi(nfs_elet["_SDI_KEY"])].copy()
+        pisa_elet = df_pisa[~self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
 
-        def build_side_agg(
-            df: pd.DataFrame,
-            amount_col: str,
-            extra_cols: List[str],
-            prefix: str,
-        ) -> pd.DataFrame:
-            df_local = df.copy()
-            df_local["_SDI_KEY"] = df_local["_SDI_KEY"].astype(str).str.strip()
-            grp = df_local.groupby("_SDI_KEY", dropna=False)
+        nfs_elet["_SDI_KEY_NORM"] = nfs_elet["_SDI_KEY"].astype(str).str.strip()
+        pisa_elet["_SDI_KEY_NORM"] = pisa_elet["_SDI_KEY"].astype(str).str.strip()
 
-            out = pd.DataFrame(
-                {
-                    "Identificativo SDI": grp.size().index,
-                    f"{prefix} Numero": grp.size().values,
-                    f"{prefix} Importo": grp[amount_col].sum().values,
-                }
-            )
+        nfs_keys = set(nfs_elet["_SDI_KEY_NORM"])
+        pisa_keys = set(pisa_elet["_SDI_KEY_NORM"])
 
-            for col in extra_cols:
-                first_values = grp[col].apply(
-                    lambda s: s.dropna().astype(str).str.strip().iloc[0] if len(s.dropna()) else ""
-                )
-                nunique_values = grp[col].apply(lambda s: s.dropna().astype(str).str.strip().nunique())
-                values: List[str] = []
-                for sdi_key in out["Identificativo SDI"]:
-                    if int(nunique_values.loc[sdi_key]) > 1:
-                        values.append("MULTIPLE")
-                    else:
-                        values.append(str(first_values.loc[sdi_key]))
-                out[f"{prefix} {col}"] = values
-
-            return out
-
-        nfs_agg = build_side_agg(
-            nfs_non_empty,
-            amount_col="Imponibile",
-            extra_cols=["Ragione sociale", "N.fatture", "Datat reg."],
-            prefix="NFS",
+        only_pisa_keys = sorted(pisa_keys - nfs_keys)
+        pisa_first_by_key = (
+            pisa_elet.sort_values(by=["Data emissione", "Numero fattura"], na_position="last")
+            .drop_duplicates(subset=["_SDI_KEY_NORM"], keep="first")
+            .set_index("_SDI_KEY_NORM")
         )
-        pisa_agg = build_side_agg(
-            pisa_non_empty,
-            amount_col="Importo fattura",
-            extra_cols=["Creditore", "Numero fattura", "Data emissione"],
-            prefix="Pisa",
-        )
-
-        merged = nfs_agg.merge(pisa_agg, on="Identificativo SDI", how="outer")
-        merged["NFS Numero"] = pd.to_numeric(merged["NFS Numero"], errors="coerce").fillna(0).astype(int)
-        merged["Pisa Numero"] = pd.to_numeric(merged["Pisa Numero"], errors="coerce").fillna(0).astype(int)
-        merged["NFS Importo"] = pd.to_numeric(merged["NFS Importo"], errors="coerce").fillna(0.0)
-        merged["Pisa Importo"] = pd.to_numeric(merged["Pisa Importo"], errors="coerce").fillna(0.0)
-
-        merged["Delta Numero"] = merged["NFS Numero"] - merged["Pisa Numero"]
-        merged["Delta Importo"] = (merged["NFS Importo"] - merged["Pisa Importo"]).round(2)
-
-        is_only_nfs = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] == 0)
-        is_only_pisa = (merged["Pisa Numero"] > 0) & (merged["NFS Numero"] == 0)
-        is_diff_amount = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] > 0) & (merged["Delta Importo"].abs() > 0.01)
-        is_diff_count = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] > 0) & (merged["Delta Numero"] != 0)
-
-        to_show = merged[is_only_nfs | is_only_pisa | is_diff_amount | is_diff_count].copy()
-
-        def outcome(row: pd.Series) -> str:
-            if row["NFS Numero"] > 0 and row["Pisa Numero"] == 0:
-                return "Solo NFS"
-            if row["Pisa Numero"] > 0 and row["NFS Numero"] == 0:
-                return "Solo Pisa"
-            if abs(float(row["Delta Importo"])) > 0.01:
-                return "Importo diverso"
-            if int(row["Delta Numero"]) != 0:
-                return "Numero diverso"
-            return ""
-
-        to_show["Esito"] = to_show.apply(outcome, axis=1)
-        to_show = to_show.sort_values(by=["Esito", "Identificativo SDI"], ascending=[True, True])
 
         money_format = "#,##0.00"
         date_format = "dd/mm/yyyy"
         row_idx = 2
-        for _, row in to_show.iterrows():
-            ws.cell(row=row_idx, column=1, value=row.get("Identificativo SDI", ""))
-            ws.cell(row=row_idx, column=2, value=row.get("Esito", ""))
-            ws.cell(row=row_idx, column=3, value=row.get("NFS Ragione sociale", ""))
-            ws.cell(row=row_idx, column=4, value=row.get("NFS N.fatture", ""))
-            nfs_date = row.get("NFS Datat reg.", "")
-            pisa_date = row.get("Pisa Data emissione", "")
-            c5 = ws.cell(row=row_idx, column=5, value=nfs_date if nfs_date != "" else None)
+        def write_row(
+            file_label: str,
+            categoria: str,
+            ragione_sociale: str,
+            numero_fattura: str,
+            data_documento,
+            data_reg_fattura,
+            data_immissione,
+            imponibile: float,
+            imposta: float,
+            importo_totale: float,
+            sdi_key: str,
+        ) -> None:
+            nonlocal row_idx
+            ws.cell(row=row_idx, column=1, value=file_label)
+            ws.cell(row=row_idx, column=2, value=categoria)
+            ws.cell(row=row_idx, column=3, value=ragione_sociale)
+            ws.cell(row=row_idx, column=4, value=numero_fattura)
+            c5 = ws.cell(row=row_idx, column=5, value=data_documento if data_documento is not None else None)
             if c5.value is not None:
                 c5.number_format = date_format
-            c6 = ws.cell(row=row_idx, column=6, value=float(row.get("NFS Importo", 0.0)))
-            c6.number_format = money_format
-            ws.cell(row=row_idx, column=7, value=row.get("Pisa Creditore", ""))
-            ws.cell(row=row_idx, column=8, value=row.get("Pisa Numero fattura", ""))
-            c9 = ws.cell(row=row_idx, column=9, value=pisa_date if pisa_date != "" else None)
-            if c9.value is not None:
-                c9.number_format = date_format
-            c10 = ws.cell(row=row_idx, column=10, value=float(row.get("Pisa Importo", 0.0)))
+            c6 = ws.cell(row=row_idx, column=6, value=data_reg_fattura if data_reg_fattura is not None else None)
+            if c6.value is not None:
+                c6.number_format = date_format
+            c7 = ws.cell(row=row_idx, column=7, value=data_immissione if data_immissione is not None else None)
+            if c7.value is not None:
+                c7.number_format = date_format
+            c8 = ws.cell(row=row_idx, column=8, value=float(imponibile))
+            c8.number_format = money_format
+            c9 = ws.cell(row=row_idx, column=9, value=float(imposta))
+            c9.number_format = money_format
+            c10 = ws.cell(row=row_idx, column=10, value=float(importo_totale))
             c10.number_format = money_format
-            ws.cell(row=row_idx, column=11, value=int(row.get("Delta Numero", 0)))
-            c12 = ws.cell(row=row_idx, column=12, value=float(row.get("Delta Importo", 0.0)))
-            c12.number_format = money_format
+            ws.cell(row=row_idx, column=11, value=sdi_key)
             row_idx += 1
 
-        ws.column_dimensions["A"].width = 22
-        ws.column_dimensions["B"].width = 16
-        ws.column_dimensions["C"].width = 26
-        ws.column_dimensions["D"].width = 14
-        ws.column_dimensions["E"].width = 14
-        ws.column_dimensions["F"].width = 16
-        ws.column_dimensions["G"].width = 26
+        for sdi_key in only_pisa_keys:
+            pisa_row = pisa_first_by_key.loc[sdi_key]
+            iva_value = float(pisa_row.get("IVA", 0.0))
+            importo_fattura = float(pisa_row.get("Importo fattura", 0.0))
+            imponibile = importo_fattura - iva_value
+            write_row(
+                file_label="FT Pisa",
+                categoria="Elettroniche",
+                ragione_sociale=pisa_row.get("Creditore", ""),
+                numero_fattura=pisa_row.get("Numero fattura", ""),
+                data_documento=pisa_row.get("Data documento", None),
+                data_reg_fattura=pisa_row.get("Data pagamento", None),
+                data_immissione=None,
+                imponibile=imponibile,
+                imposta=iva_value,
+                importo_totale=importo_fattura,
+                sdi_key=sdi_key,
+            )
+
+        ws.column_dimensions["A"].width = 16
+        ws.column_dimensions["B"].width = 18
+        ws.column_dimensions["C"].width = 32
+        ws.column_dimensions["D"].width = 18
+        ws.column_dimensions["E"].width = 16
+        ws.column_dimensions["F"].width = 22
+        ws.column_dimensions["G"].width = 16
         ws.column_dimensions["H"].width = 16
-        ws.column_dimensions["I"].width = 16
+        ws.column_dimensions["I"].width = 12
         ws.column_dimensions["J"].width = 18
-        ws.column_dimensions["K"].width = 14
-        ws.column_dimensions["L"].width = 16
+        ws.column_dimensions["K"].width = 20
+
+    def _create_delta_ft_sheet(
+        self,
+        wb: Workbook,
+        df_nfs: pd.DataFrame,
+        df_pisa: pd.DataFrame,
+        header_fill: PatternFill,
+        header_font: Font,
+    ) -> None:
+        ws = wb.create_sheet("Delta FT in dettaglio")
+
+        headers = [
+            "File",
+            "Categoria",
+            "Ragione sociale",
+            "Numero fattura",
+            "Data documento",
+            "Data Registrazione Fattura",
+            "Data immissione",
+            "Imponibile",
+            "imposta",
+            "Importo tot. fattura",
+            "Identificativo SDI",
+        ]
+        for col_idx, value in enumerate(headers, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=value)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        money_format = "#,##0.00"
+        date_format = "dd/mm/yyyy"
+        row_idx = 2
+
+        def write_row(
+            categoria: str,
+            ragione_sociale: str,
+            numero_fattura: str,
+            data_documento,
+            data_reg_fattura,
+            data_immissione,
+            imponibile: float,
+            imposta: float,
+            importo_totale: float,
+            sdi_key: str,
+        ) -> None:
+            nonlocal row_idx
+            ws.cell(row=row_idx, column=1, value="FT Pisa")
+            ws.cell(row=row_idx, column=2, value=categoria)
+            ws.cell(row=row_idx, column=3, value=ragione_sociale)
+            ws.cell(row=row_idx, column=4, value=numero_fattura)
+            c5 = ws.cell(row=row_idx, column=5, value=data_documento if data_documento is not None else None)
+            if c5.value is not None:
+                c5.number_format = date_format
+            c6 = ws.cell(row=row_idx, column=6, value=data_reg_fattura if data_reg_fattura is not None else None)
+            if c6.value is not None:
+                c6.number_format = date_format
+            c7 = ws.cell(row=row_idx, column=7, value=data_immissione if data_immissione is not None else None)
+            if c7.value is not None:
+                c7.number_format = date_format
+            c8 = ws.cell(row=row_idx, column=8, value=float(imponibile))
+            c8.number_format = money_format
+            c9 = ws.cell(row=row_idx, column=9, value=float(imposta))
+            c9.number_format = money_format
+            c10 = ws.cell(row=row_idx, column=10, value=float(importo_totale))
+            c10.number_format = money_format
+            ws.cell(row=row_idx, column=11, value=sdi_key)
+            row_idx += 1
+
+        def normalize_key(value: object) -> str:
+            if value is None or pd.isna(value):
+                return ""
+            return str(value).strip().lower()
+
+        def normalize_date(value: object) -> str:
+            if value is None or pd.isna(value):
+                return ""
+            dt = pd.to_datetime(value, errors="coerce")
+            if pd.isna(dt):
+                return ""
+            return dt.strftime("%Y-%m-%d")
+
+        def normalize_amount(value: object) -> str:
+            if value is None or pd.isna(value):
+                return ""
+            num = pd.to_numeric(value, errors="coerce")
+            if pd.isna(num):
+                return ""
+            return f"{float(num):.2f}"
+
+        nfs_protocols = df_nfs["Prot."].astype(str).str.strip().str.upper()
+        nfs_cart = df_nfs[nfs_protocols.isin(self.NFS_CARTACEE_PROTOCOLS)].copy()
+        pisa_cart = df_pisa[self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
+        nfs_elet = df_nfs[nfs_protocols.isin(self.NFS_ELETTRONICHE_PROTOCOLS)].copy()
+        nfs_elet = nfs_elet[~self._is_empty_sdi(nfs_elet["_SDI_KEY"])].copy()
+        pisa_elet = df_pisa[~self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
+
+        delta_cart = max(int(len(pisa_cart)) - int(len(nfs_cart)), 0)
+        delta_elet = max(int(len(pisa_elet)) - int(len(nfs_elet)), 0)
+
+        nfs_cart["_DELTA_KEY"] = (
+            nfs_cart["Ragione sociale"].map(normalize_key)
+            + "|"
+            + nfs_cart["N.fatture"].map(normalize_key)
+            + "|"
+            + nfs_cart["Data Fatture"].map(normalize_date)
+            + "|"
+            + nfs_cart["Tot. imp. fatture"].map(normalize_amount)
+        )
+        pisa_cart["_DELTA_KEY"] = (
+            pisa_cart["Creditore"].map(normalize_key)
+            + "|"
+            + pisa_cart["Numero fattura"].map(normalize_key)
+            + "|"
+            + pisa_cart["Data documento"].map(normalize_date)
+            + "|"
+            + pisa_cart["Importo fattura"].map(normalize_amount)
+        )
+
+        nfs_cart_counts = nfs_cart["_DELTA_KEY"].value_counts()
+        pisa_cart_counts = pisa_cart["_DELTA_KEY"].value_counts()
+        pisa_cart_sorted = pisa_cart.sort_values(by=["Data documento", "Numero fattura"], na_position="last")
+
+        cart_indices: list[int] = []
+        for key, pisa_count in pisa_cart_counts.items():
+            nfs_count = int(nfs_cart_counts.get(key, 0))
+            excess = int(pisa_count) - nfs_count
+            if excess <= 0:
+                continue
+            rows = pisa_cart_sorted[pisa_cart_sorted["_DELTA_KEY"] == key].head(excess)
+            cart_indices.extend(rows.index.tolist())
+
+        cart_selected = (
+            pisa_cart_sorted.loc[cart_indices].copy()
+            if cart_indices
+            else pisa_cart_sorted.iloc[0:0].copy()
+        )
+        if delta_cart and len(cart_selected) > delta_cart:
+            cart_selected = cart_selected.head(delta_cart)
+        if delta_cart and len(cart_selected) < delta_cart:
+            remaining = pisa_cart_sorted[~pisa_cart_sorted.index.isin(cart_selected.index)]
+            extra = remaining.head(delta_cart - len(cart_selected))
+            cart_selected = pd.concat([cart_selected, extra])
+
+        for _, row in cart_selected.iterrows():
+            iva_value = float(row.get("IVA", 0.0))
+            importo_fattura = float(row.get("Importo fattura", 0.0))
+            imponibile = importo_fattura - iva_value
+            write_row(
+                categoria="Cartacee",
+                ragione_sociale=row.get("Creditore", ""),
+                numero_fattura=row.get("Numero fattura", ""),
+                data_documento=row.get("Data documento", None),
+                data_reg_fattura=row.get("Data pagamento", None),
+                data_immissione=None,
+                imponibile=imponibile,
+                imposta=iva_value,
+                importo_totale=importo_fattura,
+                sdi_key="",
+            )
+
+        nfs_elet_counts = nfs_elet["_SDI_KEY"].astype(str).str.strip().value_counts()
+        pisa_elet_counts = pisa_elet["_SDI_KEY"].astype(str).str.strip().value_counts()
+        pisa_elet_sorted = pisa_elet.sort_values(by=["Data documento", "Numero fattura"], na_position="last")
+
+        elet_indices: list[int] = []
+        for key, pisa_count in pisa_elet_counts.items():
+            nfs_count = int(nfs_elet_counts.get(key, 0))
+            excess = int(pisa_count) - nfs_count
+            if excess <= 0:
+                continue
+            rows = pisa_elet_sorted[pisa_elet_sorted["_SDI_KEY"].astype(str).str.strip() == key].head(excess)
+            elet_indices.extend(rows.index.tolist())
+
+        elet_selected = (
+            pisa_elet_sorted.loc[elet_indices].copy()
+            if elet_indices
+            else pisa_elet_sorted.iloc[0:0].copy()
+        )
+        if delta_elet and len(elet_selected) > delta_elet:
+            elet_selected = elet_selected.head(delta_elet)
+        if delta_elet and len(elet_selected) < delta_elet:
+            remaining = pisa_elet_sorted[~pisa_elet_sorted.index.isin(elet_selected.index)]
+            extra = remaining.head(delta_elet - len(elet_selected))
+            elet_selected = pd.concat([elet_selected, extra])
+
+        for _, row in elet_selected.iterrows():
+            iva_value = float(row.get("IVA", 0.0))
+            importo_fattura = float(row.get("Importo fattura", 0.0))
+            imponibile = importo_fattura - iva_value
+            write_row(
+                categoria="Elettroniche",
+                ragione_sociale=row.get("Creditore", ""),
+                numero_fattura=row.get("Numero fattura", ""),
+                data_documento=row.get("Data documento", None),
+                data_reg_fattura=row.get("Data pagamento", None),
+                data_immissione=None,
+                imponibile=imponibile,
+                imposta=iva_value,
+                importo_totale=importo_fattura,
+                sdi_key=row.get("_SDI_KEY", ""),
+            )
+
+        ws.column_dimensions["A"].width = 16
+        ws.column_dimensions["B"].width = 18
+        ws.column_dimensions["C"].width = 32
+        ws.column_dimensions["D"].width = 18
+        ws.column_dimensions["E"].width = 16
+        ws.column_dimensions["F"].width = 22
+        ws.column_dimensions["G"].width = 16
+        ws.column_dimensions["H"].width = 16
+        ws.column_dimensions["I"].width = 12
+        ws.column_dimensions["J"].width = 18
+        ws.column_dimensions["K"].width = 20
 
     def _create_differenze_elettroniche_sheet(
         self,
@@ -1168,8 +1529,10 @@ class CompareFTFileProcessor:
         nfs_elet = df_nfs[nfs_elet_mask].copy()
         pisa_elet = df_pisa[~pisa_cart_mask].copy()
 
-        nfs_elet_non_empty = nfs_elet[~self._is_empty_sdi(nfs_elet["_SDI_KEY"])].copy()
-        pisa_elet_non_empty = pisa_elet[~self._is_empty_sdi(pisa_elet["_SDI_KEY"])].copy()
+        nfs_sdi_empty = self._is_empty_sdi(nfs_elet["_SDI_KEY"])
+        pisa_sdi_empty = self._is_empty_sdi(pisa_elet["_SDI_KEY"])
+        nfs_elet_non_empty = nfs_elet[~nfs_sdi_empty].copy()
+        pisa_elet_non_empty = pisa_elet[~pisa_sdi_empty].copy()
 
         nfs_keys = set(nfs_elet_non_empty["_SDI_KEY"].astype(str).str.strip())
         pisa_keys = set(pisa_elet_non_empty["_SDI_KEY"].astype(str).str.strip())
@@ -1177,7 +1540,7 @@ class CompareFTFileProcessor:
         only_pisa_keys = sorted(pisa_keys - nfs_keys)
         only_nfs_keys = sorted(nfs_keys - pisa_keys)
 
-        nfs_elet_empty_sdi = nfs_elet[self._is_empty_sdi(nfs_elet["_SDI_KEY"])].copy()
+        nfs_elet_empty_sdi = nfs_elet[nfs_sdi_empty].copy()
 
         row_idx = 2
 
@@ -1388,15 +1751,23 @@ class CompareFTFileProcessor:
         )
 
         df_nfs_lookup_non_empty = df_nfs_lookup[~self._is_empty_sdi(df_nfs_lookup["_SDI_KEY"])].copy()
+        df_nfs_lookup_non_empty["_SDI_KEY_NORM"] = df_nfs_lookup_non_empty["_SDI_KEY"].astype(str).str.strip()
+        df_nfs_lookup_non_empty["_NFS_DATE"] = pd.to_datetime(
+            df_nfs_lookup_non_empty["Datat reg."], errors="coerce"
+        )
+        df_nfs_lookup_non_empty["_NFS_MONTH"] = df_nfs_lookup_non_empty["_NFS_DATE"].dt.to_period("M").astype(str)
+        nfs_months_by_key = (
+            df_nfs_lookup_non_empty.dropna(subset=["_NFS_MONTH"])
+            .groupby("_SDI_KEY_NORM")["_NFS_MONTH"]
+            .agg(lambda values: sorted(set(values)))
+        )
+        nfs_first_reg_by_key = df_nfs_lookup_non_empty.groupby("_SDI_KEY_NORM")["_NFS_DATE"].min()
 
         row_idx = 2
         for key in only_pisa_keys:
             pisa_row = pisa_first_by_key.loc[key]
-            nfs_matches = df_nfs_lookup_non_empty[df_nfs_lookup_non_empty["_SDI_KEY"].astype(str).str.strip() == key].copy()
-            nfs_dates = nfs_matches["Datat reg."]
-            nfs_dates = pd.to_datetime(nfs_dates, errors="coerce").dropna()
-            months = sorted(set(nfs_dates.dt.to_period("M").astype(str)))
-            first_reg = nfs_dates.min() if len(nfs_dates) else None
+            months = nfs_months_by_key.get(key, [])
+            first_reg = nfs_first_reg_by_key.get(key, None)
 
             ws.cell(row=row_idx, column=1, value=key)
             ws.cell(row=row_idx, column=2, value=pisa_row.get("Creditore", ""))

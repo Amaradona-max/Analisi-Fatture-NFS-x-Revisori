@@ -94,18 +94,20 @@ def test_process_compare_creates_output(tmp_path: Path):
     summary = processor.process_files(nfs_path, pisa_path, out_path)
 
     assert out_path.exists()
-    assert summary["period"] == "2025"
+    assert summary["period"] == "Tutto il periodo"
     assert summary["nfs"]["cartacee"]["count"] == 1
     assert summary["nfs"]["cartacee"]["amount"] == 100.0
     assert summary["nfs"]["elettroniche"]["count"] == 2
     assert summary["nfs"]["elettroniche"]["amount"] == 210.0
     assert summary["pisa"]["cartacee"]["count"] == 1
     assert summary["pisa"]["cartacee"]["amount"] == 50.0
+    assert summary["pisa"]["elettroniche"]["count"] == 2
+    assert summary["pisa"]["elettroniche"]["amount"] == 80.0
 
     wb = load_workbook(out_path)
-    assert wb.sheetnames == ["Confronto", "Dati e Valori Attesi", "Delta Fatture"]
-    dati_ws = wb["Dati e Valori Attesi"]
-    assert dati_ws.cell(row=2, column=1).value == "Cartacee"
-    assert dati_ws.cell(row=2, column=2).value == 254
-    delta_ws = wb["Delta Fatture"]
-    assert delta_ws.max_row >= 2
+    assert "Confronto" in wb.sheetnames
+    assert "Differenze tra file" in wb.sheetnames
+    assert "Delta FT in dettaglio" in wb.sheetnames
+
+    ws_diff = wb["Differenze tra file"]
+    assert ws_diff.max_row >= 2

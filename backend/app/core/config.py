@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 62914560
     ALLOWED_EXTENSIONS: set = {".xlsx"}
 
-    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000"
 
     FILE_RETENTION_HOURS: int = 24
 
