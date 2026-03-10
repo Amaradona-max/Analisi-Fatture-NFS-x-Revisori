@@ -1370,12 +1370,12 @@ class CompareFTFileProcessor:
         nfs_protocols = df_nfs["Prot."].astype(str).str.strip().str.upper()
         nfs_cart = df_nfs[nfs_protocols.isin(self.NFS_CARTACEE_PROTOCOLS)].copy()
         pisa_cart = df_pisa[self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
-        nfs_elet = df_nfs[nfs_protocols.isin(self.NFS_ELETTRONICHE_PROTOCOLS)].copy()
-        nfs_elet = nfs_elet[~self._is_empty_sdi(nfs_elet["_SDI_KEY"])].copy()
+        nfs_elet_all = df_nfs[nfs_protocols.isin(self.NFS_ELETTRONICHE_PROTOCOLS)].copy()
+        nfs_elet = nfs_elet_all[~self._is_empty_sdi(nfs_elet_all["_SDI_KEY"])].copy()
         pisa_elet = df_pisa[~self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
 
         delta_cart = max(int(len(pisa_cart)) - int(len(nfs_cart)), 0)
-        delta_elet = max(int(len(pisa_elet)) - int(len(nfs_elet)), 0)
+        delta_elet = max(int(len(pisa_elet)) - int(len(nfs_elet_all)), 0)
 
         nfs_cart["_DELTA_KEY"] = (
             nfs_cart["Ragione sociale"].map(normalize_key)
@@ -1416,10 +1416,6 @@ class CompareFTFileProcessor:
         )
         if delta_cart and len(cart_selected) > delta_cart:
             cart_selected = cart_selected.head(delta_cart)
-        if delta_cart and len(cart_selected) < delta_cart:
-            remaining = pisa_cart_sorted[~pisa_cart_sorted.index.isin(cart_selected.index)]
-            extra = remaining.head(delta_cart - len(cart_selected))
-            cart_selected = pd.concat([cart_selected, extra])
 
         for _, row in cart_selected.iterrows():
             iva_value = float(row.get("IVA", 0.0))
@@ -1458,10 +1454,6 @@ class CompareFTFileProcessor:
         )
         if delta_elet and len(elet_selected) > delta_elet:
             elet_selected = elet_selected.head(delta_elet)
-        if delta_elet and len(elet_selected) < delta_elet:
-            remaining = pisa_elet_sorted[~pisa_elet_sorted.index.isin(elet_selected.index)]
-            extra = remaining.head(delta_elet - len(elet_selected))
-            elet_selected = pd.concat([elet_selected, extra])
 
         for _, row in elet_selected.iterrows():
             iva_value = float(row.get("IVA", 0.0))
