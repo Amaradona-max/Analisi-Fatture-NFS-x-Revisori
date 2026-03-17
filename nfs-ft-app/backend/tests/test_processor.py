@@ -246,6 +246,7 @@ def test_compare_files_january_2025(tmp_path: Path):
         [
             ["", "b1", "c1", "d1", "e1", "2025-01-12", "g1", "Ragione A", "i1", 120.0, "k1", 150.0, "m1", "n1", "o1"],
             ["123", "b2", "c2", "d2", "e2", "2025-01-20", "g2", "Ragione B", "i2", 220.0, "k2", 250.0, "m2", "n2", "o2"],
+            ["", "bX", "c_extra", "dX", "eX", "2025-01-25", "gX", "Ragione X", "iX", 50.0, "kX", 50.0, "mX", "nX", "oX"],
             ["", "b3", "c3", "d3", "e3", "2025-02-05", "g3", "Ragione C", "i3", 320.0, "k3", 300.0, "m3", "n3", "o3"],
         ],
         columns=pisa_columns,
@@ -263,7 +264,7 @@ def test_compare_files_january_2025(tmp_path: Path):
     assert output_path.exists()
     assert summary["nfs"]["cartacee"]["count"] == 1
     assert summary["nfs"]["elettroniche"]["count"] == 1
-    assert summary["pisa"]["cartacee"]["count"] == 1
+    assert summary["pisa"]["cartacee"]["count"] == 2
     assert summary["pisa"]["elettroniche"]["count"] == 1
 
     wb = load_workbook(output_path, data_only=True)
@@ -271,3 +272,4 @@ def test_compare_files_january_2025(tmp_path: Path):
     assert "Differenze tra file" in wb.sheetnames
     diff_ws = wb["Differenze tra file"]
     assert diff_ws.max_row >= 2
+    assert any(isinstance(cell.value, str) and cell.value.startswith("CART:") for cell in diff_ws["A"])

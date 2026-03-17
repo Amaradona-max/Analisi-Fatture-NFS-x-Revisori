@@ -1066,22 +1066,36 @@ class CompareFTFileProcessor:
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        nfs_non_empty = df_nfs[~self._is_empty_sdi(df_nfs["_SDI_KEY"])].copy()
-        pisa_non_empty = df_pisa[~self._is_empty_sdi(df_pisa["_SDI_KEY"])].copy()
+        def normalize_text(value: Any) -> str:
+            if pd.isna(value):
+                return ""
+            text = str(value).strip().lower()
+            if text in {"", "nan", "none", "null"}:
+                return ""
+            text = re.sub(r"\s+", "", text)
+            return text
+
+        nfs_sdi_empty = self._is_empty_sdi(df_nfs["_SDI_KEY"])
+        pisa_sdi_empty = self._is_empty_sdi(df_pisa["_SDI_KEY"])
+
+        nfs_non_empty = df_nfs[~nfs_sdi_empty].copy()
+        pisa_non_empty = df_pisa[~pisa_sdi_empty].copy()
 
         def build_side_agg(
             df: pd.DataFrame,
+            key_col: str,
+            key_prefix: str,
             amount_col: str,
             extra_cols: List[str],
             prefix: str,
         ) -> pd.DataFrame:
             df_local = df.copy()
-            df_local["_SDI_KEY"] = df_local["_SDI_KEY"].astype(str).str.strip()
-            grp = df_local.groupby("_SDI_KEY", dropna=False)
+            df_local[key_col] = df_local[key_col].astype(str).str.strip()
+            grp = df_local.groupby(key_col, dropna=False)
 
             out = pd.DataFrame(
                 {
-                    "Identificativo SDI": grp.size().index,
+                    "Identificativo SDI": [f"{key_prefix}{key}" for key in grp.size().index.astype(str)],
                     f"{prefix} Numero": grp.size().values,
                     f"{prefix} Importo": grp[amount_col].sum().values,
                 }
@@ -1093,43 +1107,86 @@ class CompareFTFileProcessor:
                 )
                 nunique_values = grp[col].apply(lambda s: s.dropna().astype(str).str.strip().nunique())
                 values: List[str] = []
-                for sdi_key in out["Identificativo SDI"]:
-                    if int(nunique_values.loc[sdi_key]) > 1:
+                for key in grp.size().index.astype(str):
+                    if int(nunique_values.loc[key]) > 1:
                         values.append("MULTIPLE")
                     else:
-                        values.append(str(first_values.loc[sdi_key]))
+                        values.append(str(first_values.loc[key]))
                 out[f"{prefix} {col}"] = values
 
             return out
 
-        nfs_agg = build_side_agg(
-            nfs_non_empty,
-            amount_col="Imponibile",
-            extra_cols=["Ragione sociale", "N.fatture", "Datat reg."],
-            prefix="NFS",
+        def build_mismatch_df(
+            nfs_df: pd.DataFrame,
+            pisa_df: pd.DataFrame,
+            key_col_nfs: str,
+            key_col_pisa: str,
+            key_prefix: str,
+        ) -> pd.DataFrame:
+            nfs_agg = build_side_agg(
+                nfs_df,
+                key_col=key_col_nfs,
+                key_prefix=key_prefix,
+                amount_col="Imponibile",
+                extra_cols=["Ragione sociale", "N.fatture", "Datat reg."],
+                prefix="NFS",
+            )
+            pisa_agg = build_side_agg(
+                pisa_df,
+                key_col=key_col_pisa,
+                key_prefix=key_prefix,
+                amount_col="Importo fattura",
+                extra_cols=["Creditore", "Numero fattura", "Data emissione"],
+                prefix="Pisa",
+            )
+
+            merged = nfs_agg.merge(pisa_agg, on="Identificativo SDI", how="outer")
+            merged["NFS Numero"] = pd.to_numeric(merged["NFS Numero"], errors="coerce").fillna(0).astype(int)
+            merged["Pisa Numero"] = pd.to_numeric(merged["Pisa Numero"], errors="coerce").fillna(0).astype(int)
+            merged["NFS Importo"] = pd.to_numeric(merged["NFS Importo"], errors="coerce").fillna(0.0)
+            merged["Pisa Importo"] = pd.to_numeric(merged["Pisa Importo"], errors="coerce").fillna(0.0)
+
+            merged["Delta Numero"] = merged["NFS Numero"] - merged["Pisa Numero"]
+            merged["Delta Importo"] = (merged["NFS Importo"] - merged["Pisa Importo"]).round(2)
+
+            is_only_nfs = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] == 0)
+            is_only_pisa = (merged["Pisa Numero"] > 0) & (merged["NFS Numero"] == 0)
+            is_diff_amount = (
+                (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] > 0) & (merged["Delta Importo"].abs() > 0.01)
+            )
+            is_diff_count = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] > 0) & (merged["Delta Numero"] != 0)
+
+            return merged[is_only_nfs | is_only_pisa | is_diff_amount | is_diff_count].copy()
+
+        to_show_elet = build_mismatch_df(
+            nfs_df=nfs_non_empty,
+            pisa_df=pisa_non_empty,
+            key_col_nfs="_SDI_KEY",
+            key_col_pisa="_SDI_KEY",
+            key_prefix="",
         )
-        pisa_agg = build_side_agg(
-            pisa_non_empty,
-            amount_col="Importo fattura",
-            extra_cols=["Creditore", "Numero fattura", "Data emissione"],
-            prefix="Pisa",
-        )
 
-        merged = nfs_agg.merge(pisa_agg, on="Identificativo SDI", how="outer")
-        merged["NFS Numero"] = pd.to_numeric(merged["NFS Numero"], errors="coerce").fillna(0).astype(int)
-        merged["Pisa Numero"] = pd.to_numeric(merged["Pisa Numero"], errors="coerce").fillna(0).astype(int)
-        merged["NFS Importo"] = pd.to_numeric(merged["NFS Importo"], errors="coerce").fillna(0.0)
-        merged["Pisa Importo"] = pd.to_numeric(merged["Pisa Importo"], errors="coerce").fillna(0.0)
+        nfs_cart = df_nfs[nfs_sdi_empty].copy()
+        pisa_cart = df_pisa[pisa_sdi_empty].copy()
+        nfs_cart["_CART_KEY"] = nfs_cart["N.fatture"].map(normalize_text).replace("", "(vuoto)")
+        pisa_cart["_CART_KEY"] = pisa_cart["Numero fattura"].map(normalize_text).replace("", "(vuoto)")
 
-        merged["Delta Numero"] = merged["NFS Numero"] - merged["Pisa Numero"]
-        merged["Delta Importo"] = (merged["NFS Importo"] - merged["Pisa Importo"]).round(2)
+        to_show_cart = pd.DataFrame()
+        if not nfs_cart.empty or not pisa_cart.empty:
+            to_show_cart = build_mismatch_df(
+                nfs_df=nfs_cart,
+                pisa_df=pisa_cart,
+                key_col_nfs="_CART_KEY",
+                key_col_pisa="_CART_KEY",
+                key_prefix="CART:",
+            )
 
-        is_only_nfs = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] == 0)
-        is_only_pisa = (merged["Pisa Numero"] > 0) & (merged["NFS Numero"] == 0)
-        is_diff_amount = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] > 0) & (merged["Delta Importo"].abs() > 0.01)
-        is_diff_count = (merged["NFS Numero"] > 0) & (merged["Pisa Numero"] > 0) & (merged["Delta Numero"] != 0)
-
-        to_show = merged[is_only_nfs | is_only_pisa | is_diff_amount | is_diff_count].copy()
+        if to_show_cart.empty:
+            to_show = to_show_elet
+        elif to_show_elet.empty:
+            to_show = to_show_cart
+        else:
+            to_show = pd.concat([to_show_elet, to_show_cart], ignore_index=True, sort=False)
 
         def outcome(row: pd.Series) -> str:
             if row["NFS Numero"] > 0 and row["Pisa Numero"] == 0:
