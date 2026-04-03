@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertCircle, FileSpreadsheet, RefreshCw } from 'lucide-react'
 import FileUpload from './components/FileUpload'
 import ProgressBar from './components/ProgressBar'
@@ -196,7 +196,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
       const link = document.createElement('a')
       link.href = url
       const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
-      link.download = `Confronto_2025_${timestamp}.xlsx`
+      link.download = `Confronto_NFS_Ricevute_${timestamp}.xlsx`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -223,10 +223,10 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
       <div className="space-y-2">
         <div className="flex items-center gap-3">
           <FileSpreadsheet className="w-8 h-8 text-blue-600" />
-          <h2 className="text-2xl font-bold text-gray-800">Confronto completo</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Confronto</h2>
         </div>
         <p className="text-gray-600">
-          Confronto FT NFS Pagato vs FT Pisa Pagato sull’intero file.
+          Confronto FT NFS Ricevute vs FT Pisa Ricevute sull’intero file.
         </p>
       </div>
 
@@ -259,7 +259,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             </div>
           )}
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">FT NFS Pagato</p>
+            <p className="text-sm font-medium text-gray-700">FT NFS Ricevute</p>
             <FileUpload onFileSelect={setNfsFile} disabled={processing} />
             {nfsFile && (
               <p className="text-sm text-gray-600">
@@ -268,7 +268,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             )}
           </div>
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-700">FT Pisa Pagato</p>
+            <p className="text-sm font-medium text-gray-700">FT Pisa Ricevute</p>
             <FileUpload onFileSelect={setPisaFile} disabled={processing} />
             {pisaFile && (
               <p className="text-sm text-gray-600">
@@ -308,7 +308,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-blue-50 p-6 rounded-lg border border-blue-200">
-                  <h3 className="font-semibold text-gray-700 mb-3">FT NFS Pagato</h3>
+                  <h3 className="font-semibold text-gray-700 mb-3">FT NFS Ricevute</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>
@@ -327,7 +327,7 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
                   </div>
                 </div>
                 <div className="bg-purple-50 p-6 rounded-lg border border-purple-200">
-                  <h3 className="font-semibold text-gray-700 mb-3">FT Pisa Pagato</h3>
+                  <h3 className="font-semibold text-gray-700 mb-3">FT Pisa Ricevute</h3>
                   <div className="space-y-2 text-sm text-gray-700">
                     <div className="flex justify-between">
                       <span>Cartacee</span>
@@ -372,21 +372,9 @@ const CompareProcessingSection = ({ lastNfsFile, lastPisaFile }) => {
 function App() {
   const [lastNfsFile, setLastNfsFile] = useState(null)
   const [lastPisaFile, setLastPisaFile] = useState(null)
-  const [closingDay, setClosingDay] = useState(false)
-  const [closingMessage, setClosingMessage] = useState('')
-
-  const handleCloseDay = async () => {
-    setClosingDay(true)
-    setClosingMessage('')
-    try {
-      const response = await fileAPI.closeDay('Saluti fine giornata')
-      setClosingMessage(`Riepilogo aggiornato (${response.timestamp})`)
-    } catch (error) {
-      setClosingMessage(error.message)
-    } finally {
-      setClosingDay(false)
-    }
-  }
+  useEffect(() => {
+    fileAPI.healthCheck().catch(() => {})
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
@@ -394,7 +382,7 @@ function App() {
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <FileSpreadsheet className="w-12 h-12 text-blue-600" />
-            <h1 className="text-4xl font-bold text-gray-800">1. Query Fatture NFS Pagato</h1>
+            <h1 className="text-4xl font-bold text-gray-800">2. Query Fatture NFS Ricevute</h1>
           </div>
           <p className="text-gray-600">
             Elaborazione automatica file Excel con filtraggio protocolli e note riepilogative
@@ -403,34 +391,24 @@ function App() {
 
         <div className="grid grid-cols-1 gap-8">
           <FileProcessingSection
-            title="FT NFS Pagato"
-            description="Analisi e riepilogo per il file NFS Pagato."
-            downloadPrefix="FT_NFS_Pagato"
+            title="FT NFS Ricevute"
+            description="Analisi e riepilogo per il file NFS Ricevute."
+            downloadPrefix="FT_NFS_Ricevute"
             processFile={fileAPI.processFile}
             onFileProcessed={setLastNfsFile}
           />
           <FileProcessingSection
-            title="FT Pisa Pagato"
-            description="Analisi e riepilogo per il file Pisa Pagato."
-            downloadPrefix="FT_Pisa_Pagato"
+            title="FT Pisa Ricevute"
+            description="Analisi e riepilogo per il file Pisa Ricevute."
+            downloadPrefix="FT_Pisa_Ricevute"
             processFile={fileAPI.processFilePisa}
             onFileProcessed={setLastPisaFile}
           />
           <CompareProcessingSection lastNfsFile={lastNfsFile} lastPisaFile={lastPisaFile} />
         </div>
 
-        <div className="mt-8 text-center text-sm text-gray-600 space-y-3">
+        <div className="mt-8 text-center text-sm text-gray-600">
           <p>Versione 1.0.0 | Supporto: .xlsx | Max 50MB</p>
-          <div className="flex flex-col items-center gap-2">
-            <button
-              onClick={handleCloseDay}
-              disabled={closingDay}
-              className="px-5 py-2 border border-blue-600 text-blue-600 hover:bg-blue-50 disabled:text-gray-400 disabled:border-gray-300 font-semibold rounded-lg transition-colors duration-200"
-            >
-              {closingDay ? 'Chiusura in corso...' : 'Saluti fine giornata'}
-            </button>
-            {closingMessage ? <p className="text-sm text-gray-600">{closingMessage}</p> : null}
-          </div>
         </div>
       </div>
     </div>

@@ -51,8 +51,8 @@ def test_process_file_removes_duplicates(sample_dataframe, tmp_path: Path):
     assert output_path.exists()
     assert stats["total_records"] == 2
     assert stats["duplicates_removed"] == 1
-    assert stats["fase2_records"] == 1
-    assert stats["fase3_records"] == 1
+    assert stats["fase2_records"] == 0
+    assert stats["fase3_records"] == 2
 
 
 def test_process_file_pisa_splits_by_sdi(tmp_path: Path):
@@ -206,13 +206,13 @@ def test_process_file_pisa_ricevute_treats_zero_sdi_as_elettronica(tmp_path: Pat
     assert stats["fase3_records"] == 3
 
 
-def test_compare_files_january_2025(tmp_path: Path):
+def test_compare_files_all_period(tmp_path: Path):
     nfs_df = pd.DataFrame(
         {
             "C_NOME": ["A", "B"],
             "FAT_DATDOC": ["2025-01-05", "2025-01-15"],
             "FAT_NDOC": ["F001", "F002"],
-            "FAT_DATREG": ["2025-01-10", "2025-01-20"],
+            "DATA_REG_FATTURA": ["2025-01-10", "2025-01-20"],
             "FAT_PROT": ["P", "EP"],
             "FAT_NUM": [1, 2],
             "IMPONIBILE": [100.0, 200.0],
@@ -262,9 +262,10 @@ def test_compare_files_january_2025(tmp_path: Path):
     summary = processor.process_files(nfs_path, pisa_path, output_path)
 
     assert output_path.exists()
+    assert summary["period"] == "Tutto il periodo"
     assert summary["nfs"]["cartacee"]["count"] == 1
     assert summary["nfs"]["elettroniche"]["count"] == 1
-    assert summary["pisa"]["cartacee"]["count"] == 2
+    assert summary["pisa"]["cartacee"]["count"] == 3
     assert summary["pisa"]["elettroniche"]["count"] == 1
 
     wb = load_workbook(output_path, data_only=True)

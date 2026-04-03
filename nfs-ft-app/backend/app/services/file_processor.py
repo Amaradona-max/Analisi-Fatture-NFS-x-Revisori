@@ -83,19 +83,82 @@ class NFSFTFileProcessor:
         "IMPONIBILE",
         "FAT_TOTFAT",
         "FAT_TOTIVA",
-        "RA_IMPON",
-        "RA_CODTRIB",
-        "RA_IMPOSTA",
         "TMC_G8",
     ]
+
+    OPTIONAL_COLUMNS_DEFAULTS: Dict[str, Any] = {
+        "RA_IMPON": 0.0,
+        "RA_CODTRIB": "",
+        "RA_IMPOSTA": 0.0,
+    }
 
     def __init__(self) -> None:
         self.all_protocols = self.PROTOCOLLI_FASE2 + self.PROTOCOLLI_FASE3
 
     def validate_file(self, df: pd.DataFrame) -> None:
+        def normalize_col_name(value: Any) -> str:
+            text = str(value).strip().upper()
+            return re.sub(r"[^A-Z0-9]", "", text)
+
+        df.columns = [str(c).strip() for c in df.columns]
+        normalized_to_original = {normalize_col_name(c): c for c in df.columns}
+
+        for canonical in list(self.REQUIRED_COLUMNS) + list(self.OPTIONAL_COLUMNS_DEFAULTS.keys()):
+            if canonical in df.columns:
+                continue
+            key = normalize_col_name(canonical)
+            original = normalized_to_original.get(key)
+            if original and original in df.columns:
+                df.rename(columns={original: canonical}, inplace=True)
+
+        if "FAT_DATREG" not in df.columns:
+            for alt in ("DATA_REG_FATTURA", "FAT_REG_FATTURA", "DATAREGFATTURA", "FATREGFATTURA", "DATAREGISTRAZIONE"):
+                original = normalized_to_original.get(normalize_col_name(alt))
+                if original and original in df.columns:
+                    df.rename(columns={original: "FAT_DATREG"}, inplace=True)
+                    break
+
         missing_cols = [col for col in self.REQUIRED_COLUMNS if col not in df.columns]
         if missing_cols:
             raise ValueError(f"Colonne mancanti: {', '.join(missing_cols)}")
+
+        for col, default in self.OPTIONAL_COLUMNS_DEFAULTS.items():
+            if col not in df.columns:
+                df[col] = default
+
+    def _read_excel_flexible(self, input_path: Path) -> pd.DataFrame:
+        try:
+            df = pd.read_excel(input_path)
+            if len(df.columns) > 0:
+                df.columns = [str(c).strip() for c in df.columns]
+                has_real_headers = any(col and not col.lower().startswith("unnamed") for col in df.columns)
+                if has_real_headers:
+                    return df
+        except Exception:
+            pass
+
+        try:
+            raw = pd.read_excel(input_path, header=None, nrows=25)
+        except Exception:
+            return pd.read_excel(input_path)
+
+        wanted = set(self.REQUIRED_COLUMNS) | set(self.OPTIONAL_COLUMNS_DEFAULTS.keys()) | {"DATA_REG_FATTURA", "FAT_REG_FATTURA"}
+        wanted_upper = {str(x).strip().upper() for x in wanted}
+
+        header_row_idx: Optional[int] = None
+        for idx in range(len(raw)):
+            values = raw.iloc[idx].tolist()
+            normalized = {str(v).strip().upper() for v in values if v is not None and str(v).strip() != ""}
+            if len(normalized & wanted_upper) >= 5:
+                header_row_idx = idx
+                break
+
+        if header_row_idx is None:
+            return pd.read_excel(input_path)
+
+        df = pd.read_excel(input_path, header=header_row_idx)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
 
     def _filter_january_2025(self, df: pd.DataFrame, date_column: str) -> pd.DataFrame:
         if date_column not in df.columns:
@@ -121,7 +184,8 @@ class NFSFTFileProcessor:
     def process_file(self, input_path: Path, output_path: Path) -> Dict[str, Any]:
         try:
             logger.info("Caricamento file: %s", input_path)
-            df = pd.read_excel(input_path)
+            df = self._read_excel_flexible(input_path)
+            df.columns = [str(c).strip() for c in df.columns]
 
             self.validate_file(df)
 
@@ -210,13 +274,11 @@ class NFSFTFileProcessor:
             raise
 
     def _calculate_stats(self, df: pd.DataFrame, duplicates_removed: int) -> Dict[str, Any]:
-        protocol_series = df["Protocollo"].astype(str).str.strip().str.upper()
-        cartacee_mask = protocol_series.isin(self.PROTOCOLLI_FASE2)
-        elettroniche_mask = protocol_series.isin(self.PROTOCOLLI_FASE3)
-        fase2_count = int(cartacee_mask.sum())
-        fase3_count = int(elettroniche_mask.sum())
-        protocols_fase2 = {prot: int((protocol_series == prot).sum()) for prot in self.PROTOCOLLI_FASE2}
-        protocols_fase3 = {prot: int((protocol_series == prot).sum()) for prot in self.PROTOCOLLI_FASE3}
+        cartacee_df, elettroniche_df = self._split_by_sdi(df, "Identificativo SDI")
+        fase2_count = int(len(cartacee_df))
+        fase3_count = int(len(elettroniche_df))
+        protocols_fase2 = {"Cartacee": fase2_count}
+        protocols_fase3 = {"Elettroniche": fase3_count}
 
         return {
             "total_records": len(df),
@@ -259,16 +321,16 @@ class NFSFTFileProcessor:
             use_active=True,
         )
 
-        protocol_series = df["Protocollo"].astype(str).str.strip().str.upper()
-        cartacee_df = df[protocol_series.isin(self.PROTOCOLLI_FASE2)].copy()
-        elettroniche_df = df[protocol_series.isin(self.PROTOCOLLI_FASE3)].copy()
+        cartacee_df, elettroniche_df = self._split_by_sdi(df, "Identificativo SDI")
+        all_protocols = self.PROTOCOLLI_FASE2 + self.PROTOCOLLI_FASE3
+        all_descriptions = {**self.DESCRIZIONI_FASE2, **self.DESCRIZIONI_FASE3}
 
         ws_nota2 = wb.create_sheet("Fatture Cartacee")
         self._create_summary_sheet(
             ws_nota2,
             cartacee_df,
-            self.PROTOCOLLI_FASE2,
-            self.DESCRIZIONI_FASE2,
+            all_protocols,
+            all_descriptions,
             header_fill,
             header_font,
             total_fill,
@@ -279,8 +341,8 @@ class NFSFTFileProcessor:
         self._create_summary_sheet(
             ws_nota3,
             elettroniche_df,
-            self.PROTOCOLLI_FASE3,
-            self.DESCRIZIONI_FASE3,
+            all_protocols,
+            all_descriptions,
             header_fill,
             header_font,
             total_fill,
@@ -804,6 +866,83 @@ class CompareFTFileProcessor:
     NFS_ELETTRONICHE_PROTOCOLS = NFSFTFileProcessor.PROTOCOLLI_FASE3
 
     PISA_REQUIRED_COLUMNS = ["Creditore", "Numero fattura", "Identificativo SDI", "Data emissione", "Importo fattura"]
+    NFS_OPTIONAL_DEFAULTS: Dict[str, Any] = {
+        "RA_IMPON": 0.0,
+        "RA_IMPOSTA": 0.0,
+        "RA_CODTRIB": "",
+    }
+
+    def _normalize_col_name(self, value: Any) -> str:
+        text = str(value).strip().upper()
+        return re.sub(r"[^A-Z0-9]", "", text)
+
+    def _load_nfs_compare_df(self, nfs_input_path: Path) -> pd.DataFrame:
+        df = pd.read_excel(nfs_input_path)
+        df.columns = [str(c).strip() for c in df.columns]
+
+        normalized_to_original = {self._normalize_col_name(c): c for c in df.columns}
+
+        processed_map = {
+            "RAGIONESOCIALE": "C_NOME",
+            "PROTOCOLLO": "FAT_PROT",
+            "NPROTOCOLLO": "FAT_NUM",
+            "NFATTURE": "FAT_NDOC",
+            "DATAFATTURE": "FAT_DATDOC",
+            "DATAREGISTRAZIONE": "FAT_DATREG",
+            "IMPOSTA": "FAT_TOTIVA",
+            "TOTIMPONIBILE": "IMPONIBILE",
+            "TOTIMPFATTURE": "FAT_TOTFAT",
+            "RITCODICETRIBUTO": "RA_CODTRIB",
+            "RITIMPOSTA": "RA_IMPOSTA",
+            "RITIMP": "RA_IMPON",
+            "IDENTIFICATIVOSDI": "TMC_G8",
+        }
+
+        alt_map = {
+            "DATAREGFATTURA": "FAT_DATREG",
+            "DATAREG_FATTURA": "FAT_DATREG",
+            "DATAREGFATTURA": "FAT_DATREG",
+            "FATREGFATTURA": "FAT_DATREG",
+            "FATREG_FATTURA": "FAT_DATREG",
+            "DATA_REG_FATTURA": "FAT_DATREG",
+            "FAT_REG_FATTURA": "FAT_DATREG",
+        }
+
+        rename_map: dict[str, str] = {}
+        for col in df.columns:
+            norm = self._normalize_col_name(col)
+            mapped = processed_map.get(norm) or alt_map.get(norm)
+            if mapped and mapped not in df.columns:
+                rename_map[col] = mapped
+
+        if rename_map:
+            df = df.rename(columns=rename_map)
+            df.columns = [str(c).strip() for c in df.columns]
+            normalized_to_original = {self._normalize_col_name(c): c for c in df.columns}
+
+        for canonical in self.NFS_REQUIRED_COLUMNS + list(self.NFS_OPTIONAL_DEFAULTS.keys()):
+            if canonical in df.columns:
+                continue
+            original = normalized_to_original.get(self._normalize_col_name(canonical))
+            if original and original in df.columns:
+                df = df.rename(columns={original: canonical})
+
+        if "FAT_DATREG" not in df.columns:
+            for alt in ("DATA_REG_FATTURA", "FAT_REG_FATTURA", "DATAREGFATTURA", "FATREGFATTURA", "DATAREGISTRAZIONE"):
+                original = normalized_to_original.get(self._normalize_col_name(alt))
+                if original and original in df.columns:
+                    df = df.rename(columns={original: "FAT_DATREG"})
+                    break
+
+        for col, default in self.NFS_OPTIONAL_DEFAULTS.items():
+            if col not in df.columns:
+                df[col] = default
+
+        missing_nfs = [col for col in self.NFS_REQUIRED_COLUMNS if col not in df.columns]
+        if missing_nfs:
+            raise ValueError(f"Colonne mancanti nel file NFS: {', '.join(missing_nfs)}")
+
+        return df[self.NFS_REQUIRED_COLUMNS].copy()
 
     def _parse_date_series(self, series: pd.Series) -> pd.Series:
         if pd.api.types.is_datetime64_any_dtype(series):
@@ -842,14 +981,7 @@ class CompareFTFileProcessor:
             return df_pisa_raw[self.PISA_REQUIRED_COLUMNS].copy()
 
     def process_files(self, nfs_input_path: Path, pisa_input_path: Path, output_path: Path) -> Dict[str, Any]:
-        try:
-            df_nfs_raw = pd.read_excel(nfs_input_path, usecols=self.NFS_REQUIRED_COLUMNS)
-        except ValueError:
-            df_nfs_header = pd.read_excel(nfs_input_path, nrows=0)
-            missing_nfs = [col for col in self.NFS_REQUIRED_COLUMNS if col not in df_nfs_header.columns]
-            if missing_nfs:
-                raise ValueError(f"Colonne mancanti nel file NFS: {', '.join(missing_nfs)}")
-            raise
+        df_nfs_raw = self._load_nfs_compare_df(nfs_input_path)
         df_pisa = self._load_pisa_compare_df(pisa_input_path)
 
         df_nfs_lookup = df_nfs_raw[["FAT_DATREG", "TMC_G8"]].copy()
@@ -857,7 +989,7 @@ class CompareFTFileProcessor:
         df_nfs_lookup["Datat reg."] = self._parse_date_series(df_nfs_lookup["Datat reg."])
         df_nfs_lookup["_SDI_KEY"] = self._normalize_sdi(df_nfs_lookup["Identificativo SDI"])
 
-        df_nfs_deduped = df_nfs_raw.drop_duplicates(subset=["FAT_NUM", "C_NOME"]).copy()
+        df_nfs_deduped = df_nfs_raw.drop_duplicates(subset=["FAT_NDOC", "C_NOME"]).copy()
         df_nfs = df_nfs_deduped[self.NFS_REQUIRED_COLUMNS].copy()
         df_nfs.rename(columns=self.NFS_RENAME_MAP, inplace=True)
         df_nfs["Data Fatture"] = self._parse_date_series(df_nfs["Data Fatture"])
@@ -873,26 +1005,23 @@ class CompareFTFileProcessor:
         df_nfs["_SDI_KEY"] = self._normalize_sdi(df_nfs["Identificativo SDI"])
         df_pisa["_SDI_KEY"] = self._normalize_sdi(df_pisa["Identificativo SDI"])
 
-        df_nfs_jan = self._filter_january_2025(df_nfs, "Datat reg.")
-        df_pisa_jan = self._filter_january_2025(df_pisa, "Data emissione")
-
-        nfs_sdi_empty = self._is_empty_sdi(df_nfs_jan["_SDI_KEY"])
+        nfs_sdi_empty = self._is_empty_sdi(df_nfs["_SDI_KEY"])
         nfs_cart_mask = nfs_sdi_empty
         nfs_elet_mask = ~nfs_sdi_empty
-        pisa_cart_mask = self._is_empty_sdi(df_pisa_jan["_SDI_KEY"])
+        pisa_cart_mask = self._is_empty_sdi(df_pisa["_SDI_KEY"])
 
         nfs_cart_count = int(nfs_cart_mask.sum())
         nfs_elet_count = int(nfs_elet_mask.sum())
         pisa_cart_count = int(pisa_cart_mask.sum())
         pisa_elet_count = int((~pisa_cart_mask).sum())
 
-        nfs_cart_amount = round(float(df_nfs_jan.loc[nfs_cart_mask, "Imponibile"].sum()), 2)
-        nfs_elet_amount = round(float(df_nfs_jan.loc[nfs_elet_mask, "Imponibile"].sum()), 2)
-        pisa_cart_amount = round(float(df_pisa_jan.loc[pisa_cart_mask, "Importo fattura"].sum()), 2)
-        pisa_elet_amount = round(float(df_pisa_jan.loc[~pisa_cart_mask, "Importo fattura"].sum()), 2)
+        nfs_cart_amount = round(float(df_nfs.loc[nfs_cart_mask, "Imponibile"].sum()), 2)
+        nfs_elet_amount = round(float(df_nfs.loc[nfs_elet_mask, "Imponibile"].sum()), 2)
+        pisa_cart_amount = round(float(df_pisa.loc[pisa_cart_mask, "Importo fattura"].sum()), 2)
+        pisa_elet_amount = round(float(df_pisa.loc[~pisa_cart_mask, "Importo fattura"].sum()), 2)
 
         summary = {
-            "period": "2025-01",
+            "period": "Tutto il periodo",
             "nfs": {
                 "cartacee": {"count": nfs_cart_count, "amount": nfs_cart_amount, "amount_column": "Imponibile"},
                 "elettroniche": {"count": nfs_elet_count, "amount": nfs_elet_amount, "amount_column": "Imponibile"},
@@ -926,8 +1055,8 @@ class CompareFTFileProcessor:
         )
         self._create_fatture_da_verificare_sheet(
             wb=wb,
-            df_nfs=df_nfs_jan,
-            df_pisa=df_pisa_jan,
+            df_nfs=df_nfs,
+            df_pisa=df_pisa,
             header_fill=header_fill,
             header_font=header_font,
         )
